@@ -81,9 +81,10 @@ export function InvoicePreview({ invoice, logoUrl }: InvoicePreviewProps) {
                         <CardTitle className="text-3xl font-bold">AB INTERIORS</CardTitle>
                          {/* Static "Billing From" Details */}
                          <div className="mt-2 text-sm">
-                            <p>123 Interior Lane, Design City, 400001</p>
-                            <p>Phone: +91 98765 43210</p>
-                            <p>Email: contact@abinteriors.com</p>
+                            <p>Laroo Opposite Petrol Pump, Kulgam 192232</p>
+                            <p>Phone: +91 6005523074</p>
+                            <p>Email: abinteriors@gmail.com</p>
+                            <p>GSTIN: OlAPAP10968QIZS</p>
                         </div>
                     </div>
                     {logoUrl && (
