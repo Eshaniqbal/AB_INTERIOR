@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Invoice } from '@/types/invoice';
@@ -9,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useRef } from 'react';
 import html2pdf from 'html2pdf.js';
 import { Button } from './ui/button';
-import { Download, Printer } from 'lucide-react';
+import { Download, Printer, Share2 } from 'lucide-react';
 
 interface InvoicePreviewProps {
   invoice: Invoice;
@@ -42,18 +41,53 @@ export function InvoicePreview({ invoice, logoUrl }: InvoicePreviewProps) {
         margin:       0.5,
         filename:     `invoice_${invoice.invoiceNumber}.pdf`,
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true }, // useCORS might be needed for external images like logo
+        html2canvas:  { scale: 2, useCORS: true },
         jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
-      // Temporarily add print-specific styles before generating PDF
       element.classList.add('print-styles');
       html2pdf().from(element).set(opt).save().then(() => {
-          // Remove temporary styles after PDF is generated
           element.classList.remove('print-styles');
-      }).catch(err => {
+      }).catch((err: Error) => {
           console.error("Error generating PDF:", err);
-          element.classList.remove('print-styles'); // Ensure removal even on error
+          element.classList.remove('print-styles');
       });
+    }
+  };
+
+  const handleShareWhatsApp = async () => {
+    const element = previewRef.current;
+    if (element) {
+      const opt = {
+        margin:       0.5,
+        filename:     `invoice_${invoice.invoiceNumber}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+      };
+      element.classList.add('print-styles');
+      try {
+        const pdfBlob = await html2pdf().from(element).set(opt).output('blob');
+        const pdfFile = new File([pdfBlob], `invoice_${invoice.invoiceNumber}.pdf`, { type: 'application/pdf' });
+        
+        // Create a temporary link to share the file
+        const shareData = {
+          files: [pdfFile],
+          title: `Invoice #${invoice.invoiceNumber}`,
+          text: `Invoice #${invoice.invoiceNumber} from AB INTERIORS`
+        };
+
+        if (navigator.share) {
+          await navigator.share(shareData);
+        } else {
+          // Fallback for browsers that don't support Web Share API
+          const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`Invoice #${invoice.invoiceNumber} from AB INTERIORS`)}`;
+          window.open(whatsappUrl, '_blank');
+        }
+      } catch (err) {
+        console.error("Error sharing PDF:", err);
+      } finally {
+        element.classList.remove('print-styles');
+      }
     }
   };
 
@@ -70,6 +104,9 @@ export function InvoicePreview({ invoice, logoUrl }: InvoicePreviewProps) {
             <Button variant="outline" size="sm" onClick={handleDownloadPdf}>
                 <Download className="mr-2 h-4 w-4" /> Download PDF
             </Button>
+            <Button variant="outline" size="sm" onClick={handleShareWhatsApp}>
+                <Share2 className="mr-2 h-4 w-4" /> Share on WhatsApp
+            </Button>
         </div>
 
         {/* Add a wrapper with ref for html2pdf */}
@@ -81,7 +118,7 @@ export function InvoicePreview({ invoice, logoUrl }: InvoicePreviewProps) {
                         <CardTitle className="text-3xl font-bold">AB INTERIORS</CardTitle>
                          {/* Static "Billing From" Details */}
                          <div className="mt-2 text-sm">
-                            <p>Laroo Opposite Petrol Pump, Kulgam 192232</p>
+                            <p>Laroo Opposite Petrol Pump, Kulgam 192231</p>
                             <p>Phone: +91 6005523074</p>
                             <p>Email: abinteriors@gmail.com</p>
                             <p>GSTIN: OlAPAP10968QIZS</p>
@@ -149,15 +186,15 @@ export function InvoicePreview({ invoice, logoUrl }: InvoicePreviewProps) {
                     <div className="w-full max-w-xs space-y-2 text-sm">
                          <div className="flex justify-between">
                             <span className="text-muted-foreground print-text-muted-foreground">Subtotal:</span>
-                            <span className="font-medium print-text-foreground">{formatCurrency(invoice.grandTotal)}</span>
+                            <span className="font-medium print-text-foreground">₹{invoice.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-muted-foreground print-text-muted-foreground">Amount Paid:</span>
-                            <span className="font-medium print-text-foreground">{formatCurrency(invoice.amountPaid)}</span>
+                            <span className="font-medium print-text-foreground">₹{invoice.amountPaid.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                          <div className="flex justify-between border-t border-border pt-2 mt-2">
                             <span className="font-semibold text-lg text-primary print-text-foreground">Balance Due:</span>
-                            <span className="font-semibold text-lg text-primary print-text-foreground">{formatCurrency(invoice.balanceDue)}</span>
+                            <span className="font-semibold text-lg text-primary print-text-foreground">₹{invoice.balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                     </div>
                 </div>

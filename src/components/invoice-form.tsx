@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { Invoice, InvoiceItem } from '@/types/invoice';
@@ -106,12 +105,15 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
   const watchedAmountPaid = watch('amountPaid');
   const watchedDueDate = watch('dueDate');
 
+  // Function to calculate item total
+  const calculateItemTotal = (quantity: number, rate: number) => {
+    return (Number(quantity) || 0) * (Number(rate) || 0);
+  };
+
   // Calculate totals directly from watched values
   const grandTotal = useMemo(() => {
     return watchedItems.reduce((sum, item) => {
-      const quantity = Number(item.quantity) || 0;
-      const rate = Number(item.rate) || 0;
-      return sum + (quantity * rate);
+      return sum + calculateItemTotal(item.quantity, item.rate);
     }, 0);
   }, [watchedItems]);
 
@@ -119,6 +121,14 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
     const amountPaidNumber = Number(watchedAmountPaid) || 0;
     return grandTotal - amountPaidNumber;
   }, [grandTotal, watchedAmountPaid]);
+
+  // Update item total when quantity or rate changes
+  useEffect(() => {
+    watchedItems.forEach((item, index) => {
+      const total = calculateItemTotal(item.quantity, item.rate);
+      setValue(`items.${index}.total`, total, { shouldValidate: true });
+    });
+  }, [watchedItems, setValue]);
 
    // Update paymentStatus based on calculated totals and due date using useEffect
    useEffect(() => {
@@ -201,8 +211,9 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
     // Recalculate final totals and status based on submitted data
     const finalItems = data.items.map(item => ({
       ...item,
-      id: item.id || crypto.randomUUID(), // Ensure ID exists
+      id: item.id || crypto.randomUUID(),
       total: (Number(item.quantity) || 0) * (Number(item.rate) || 0),
+      description: item.description || '', // Ensure description is always a string
     }));
 
     const calculatedGrandTotal = finalItems.reduce((sum, item) => sum + item.total, 0);
@@ -235,8 +246,8 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
       grandTotal: calculatedGrandTotal,
       amountPaid: amountPaidNumber,
       balanceDue: calculatedBalanceDue,
-      paymentStatus: data.paymentStatus ?? calculatedPaymentStatus, // Use submitted status or the recalculated one
-      logoUrl: localLogo, // Use the potentially updated localLogo state
+      paymentStatus: data.paymentStatus ?? calculatedPaymentStatus,
+      logoUrl: localLogo,
     };
     onSubmit(finalData);
   };
@@ -410,55 +421,60 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
               </TableHeader>
               <TableBody>
                 {fields.map((field, index) => {
-                   // Calculate item total directly here for display
-                  const itemTotal = (Number(watchedItems[index]?.quantity) || 0) * (Number(watchedItems[index]?.rate) || 0);
+                  const itemTotal = calculateItemTotal(watchedItems[index]?.quantity, watchedItems[index]?.rate);
                   return (
-                  <TableRow key={field.id}>
-                    <TableCell>
-                      <Input {...register(`items.${index}.name`)} placeholder="Item Name" className="w-full" aria-invalid={errors.items?.[index]?.name ? "true" : "false"} />
-                      {errors.items?.[index]?.name && <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.name?.message}</p>}
-                    </TableCell>
-                     <TableCell>
-                      <Input {...register(`items.${index}.description`)} placeholder="Description (Optional)" className="w-full" />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        step="0.01"
-                         {...register(`items.${index}.quantity`)}
-                         placeholder="1"
-                         className="w-full text-right"
-                         aria-invalid={errors.items?.[index]?.quantity ? "true" : "false"}
-                      />
-                      {errors.items?.[index]?.quantity && <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.quantity?.message}</p>}
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        step="0.01"
-                         {...register(`items.${index}.rate`)}
-                         placeholder="0.00"
-                         className="w-full text-right"
-                         aria-invalid={errors.items?.[index]?.rate ? "true" : "false"}
-                      />
-                       {errors.items?.[index]?.rate && <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.rate?.message}</p>}
-                    </TableCell>
-                    {/* Display calculated item total */}
-                    <TableCell className="text-right font-medium">{formatCurrency(itemTotal)}</TableCell>
-                    <TableCell className="print-hide">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive/80"
-                        onClick={() => fields.length > 1 && remove(index)} // Prevent removing the last item
-                        disabled={fields.length <= 1}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )})}
+                    <TableRow key={field.id}>
+                      <TableCell>
+                        <Input {...register(`items.${index}.name`)} placeholder="Item Name" className="w-full" aria-invalid={errors.items?.[index]?.name ? "true" : "false"} />
+                        {errors.items?.[index]?.name && <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.name?.message}</p>}
+                      </TableCell>
+                      <TableCell>
+                        <Input {...register(`items.${index}.description`)} placeholder="Description (Optional)" className="w-full" />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          {...register(`items.${index}.quantity`)}
+                          placeholder="1"
+                          className="w-full text-right"
+                          aria-invalid={errors.items?.[index]?.quantity ? "true" : "false"}
+                        />
+                        {errors.items?.[index]?.quantity && <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.quantity?.message}</p>}
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          {...register(`items.${index}.rate`)}
+                          placeholder="0.00"
+                          className="w-full text-right"
+                          aria-invalid={errors.items?.[index]?.rate ? "true" : "false"}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            // Remove prefix zeros and update the value
+                            const cleanValue = value.replace(/^0+/, '') || '0';
+                            setValue(`items.${index}.rate`, Number(cleanValue), { shouldValidate: true });
+                          }}
+                        />
+                        {errors.items?.[index]?.rate && <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.rate?.message}</p>}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">₹{itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="print-hide">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive/80"
+                          onClick={() => fields.length > 1 && remove(index)}
+                          disabled={fields.length <= 1}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
             {errors.items && typeof errors.items === 'object' && !Array.isArray(errors.items) && <p className="text-destructive text-sm mt-1">{errors.items.message}</p>}
@@ -507,6 +523,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
                     <Input
                         type="number"
                         step="0.01"
+                        placeholder="0.00"
                         id="amountPaid"
                         {...register('amountPaid')}
                         className="w-[120px] text-right"
@@ -518,12 +535,12 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
                 <div className="flex justify-between items-center font-semibold">
                     <span>Grand Total:</span>
                      {/* Display calculated grand total */}
-                    <span>{formatCurrency(grandTotal)}</span>
+                    <span>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between items-center font-semibold text-primary">
                     <span>Balance Due:</span>
                      {/* Display calculated balance due */}
-                    <span>{formatCurrency(balanceDue)}</span>
+                    <span>₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
             </div>
           </div>
