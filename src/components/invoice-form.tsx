@@ -319,11 +319,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
                         <Input id="customerPhone" {...register('customerPhone')} />
                          {errors.customerPhone && <p className="text-destructive text-sm mt-1">{errors.customerPhone.message}</p>}
                     </div>
-                     <div>
-                        <Label htmlFor="customerGst">GST Number</Label>
-                        <Input id="customerGst" {...register('customerGst')} />
-                         {errors.customerGst && <p className="text-destructive text-sm mt-1">{errors.customerGst.message}</p>}
-                    </div>
+                   
                  </div>
              </Card>
 
