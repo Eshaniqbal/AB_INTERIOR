@@ -115,9 +115,14 @@ export function InvoicePreview({ invoice, logoUrl }: InvoicePreviewProps) {
                 <CardHeader className="bg-primary print-bg-primary text-primary-foreground print-text-primary-foreground p-6">
                 <div className="flex justify-between items-start">
                     <div>
-                        <CardTitle className="text-3xl font-bold">INVOICE</CardTitle>
+                        <CardTitle className="text-3xl font-bold">AB INTERIORS</CardTitle>
                          {/* Static "Billing From" Details */}
-                         
+                        
+
+                <p>Laroo Opposite Petrol Pump, Kulgam, 192231</p>
+                <p>Phone: +91 6005523074</p>
+                <p>Email: abinteriors@gmail.com</p>
+
                     </div>
                     {logoUrl && (
                         <img src={logoUrl} alt="Company Logo" className="h-20 w-auto object-contain max-w-[150px]" />
