@@ -196,7 +196,7 @@ export function InvoicePreview({ invoice, logoUrl }: InvoicePreviewProps) {
                 </CardContent>
 
                 <CardFooter className="p-6 text-center text-xs text-muted-foreground print-text-muted-foreground border-t border-border mt-6">
-                     System Generated Invoice - AB INTERIORS
+                     System Generated Invoice
                 </CardFooter>
             </Card>
         </div>
