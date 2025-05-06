@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -29,42 +28,53 @@ export default function ViewInvoicePage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [logo, setLogo] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-   const [isClient, setIsClient] = useState(false);
+  const [isClient, setIsClient] = useState(false);
 
   const invoiceId = Array.isArray(params.id) ? params.id[0] : params.id;
 
- useEffect(() => {
-    setIsClient(true); // Set client flag
-    if (invoiceId) {
-        const loadedLogo = loadLogo(); // Load logo from storage
-        setLogo(loadedLogo);
-        const loadedInvoice = getInvoiceById(invoiceId);
-
-        if (loadedInvoice) {
-           
-
-            // If invoice has a logoUrl stored, prefer that, otherwise use global logo
+  useEffect(() => {
+    setIsClient(true);
+    const loadData = async () => {
+      if (invoiceId) {
+        try {
+          const loadedLogo = loadLogo();
+          setLogo(loadedLogo);
+          
+          const loadedInvoice = await getInvoiceById(invoiceId);
+          if (loadedInvoice) {
             setInvoice({
-                ...loadedInvoice,
-                logoUrl: loadedInvoice.logoUrl !== undefined ? loadedInvoice.logoUrl : loadedLogo
+              ...loadedInvoice,
+              logoUrl: loadedInvoice.logoUrl !== undefined ? loadedInvoice.logoUrl : loadedLogo
             });
-        } else {
+          } else {
             toast({ title: "Error", description: "Invoice not found.", variant: "destructive" });
             router.push('/invoices');
+          }
+        } catch (error) {
+          console.error('Error loading invoice:', error);
+          toast({ title: "Error", description: "Failed to load invoice.", variant: "destructive" });
+          router.push('/invoices');
         }
-    } else {
+      } else {
         toast({ title: "Error", description: "Invalid invoice ID.", variant: "destructive" });
-         router.push('/invoices');
-    }
-    setIsLoading(false);
-  }, [invoiceId, router, toast, setIsClient]);
+        router.push('/invoices');
+      }
+      setIsLoading(false);
+    };
 
+    loadData();
+  }, [invoiceId, router, toast]);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (invoiceId) {
-      deleteInvoice(invoiceId);
-      toast({ title: "Success", description: "Invoice deleted successfully." });
-      router.push('/invoices');
+      try {
+        await deleteInvoice(invoiceId);
+        toast({ title: "Success", description: "Invoice deleted successfully." });
+        router.push('/invoices');
+      } catch (error) {
+        console.error('Error deleting invoice:', error);
+        toast({ title: "Error", description: "Failed to delete invoice.", variant: "destructive" });
+      }
     }
   };
 
@@ -84,33 +94,33 @@ export default function ViewInvoicePage() {
           Back to Invoices
         </Link>
         <div className="flex space-x-2">
-           <Link href={`/invoices/${invoiceId}/edit`} passHref>
-             <Button variant="outline" size="sm">
-                <Edit className="mr-2 h-4 w-4" /> Edit
-             </Button>
-           </Link>
-           <AlertDialog>
+          <Link href={`/invoices/${invoiceId}/edit`} passHref>
+            <Button variant="outline" size="sm">
+              <Edit className="mr-2 h-4 w-4" /> Edit
+            </Button>
+          </Link>
+          <AlertDialog>
             <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm">
-                    <Trash2 className="mr-2 h-4 w-4" /> Delete
-                </Button>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="mr-2 h-4 w-4" /> Delete
+              </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
-                <AlertDialogHeader>
+              <AlertDialogHeader>
                 <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the invoice
-                    <span className="font-semibold"> #{invoice.invoiceNumber}</span>.
+                  This action cannot be undone. This will permanently delete the invoice
+                  <span className="font-semibold"> #{invoice.invoiceNumber}</span>.
                 </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90">
-                    Delete
+                  Delete
                 </AlertDialogAction>
-                </AlertDialogFooter>
+              </AlertDialogFooter>
             </AlertDialogContent>
-            </AlertDialog>
+          </AlertDialog>
         </div>
       </div>
 

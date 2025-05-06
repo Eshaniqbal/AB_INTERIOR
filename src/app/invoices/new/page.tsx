@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -17,50 +16,77 @@ export default function NewInvoicePage() {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true); // Ensure localStorage is accessed only on the client
-    const loadedLogo = loadLogo();
-    setLogo(loadedLogo);
-  }, []);
-
-  const handleLogoUpload = (file: File) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      saveLogo(dataUrl);
-      setLogo(dataUrl);
-      toast({ title: "Success", description: "Logo uploaded successfully." });
+    setIsClient(true);
+    const loadInitialLogo = async () => {
+      try {
+        const loadedLogo = await loadLogo();
+        setLogo(loadedLogo);
+      } catch (error) {
+        console.error('Error loading logo:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load logo.",
+          variant: "destructive",
+        });
+      }
     };
-    reader.onerror = () => {
-       toast({ title: "Error", description: "Failed to read logo file.", variant: "destructive" });
+    loadInitialLogo();
+  }, [toast]);
+
+  const handleLogoUpload = async (file: File) => {
+    try {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const dataUrl = reader.result as string;
+        await saveLogo(dataUrl);
+        setLogo(dataUrl);
+        toast({ title: "Success", description: "Logo uploaded successfully." });
+      };
+      reader.onerror = () => {
+        toast({ title: "Error", description: "Failed to read logo file.", variant: "destructive" });
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      toast({
+        title: "Error",
+        description: "Failed to upload logo.",
+        variant: "destructive",
+      });
     }
-    reader.readAsDataURL(file);
   };
 
-   const handleLogoDelete = () => {
-        deleteLogo();
-        setLogo(null);
-        toast({ title: "Success", description: "Logo removed." });
-    };
+  const handleLogoDelete = async () => {
+    try {
+      await deleteLogo();
+      setLogo(null);
+      toast({ title: "Success", description: "Logo removed." });
+    } catch (error) {
+      console.error('Error deleting logo:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete logo.",
+        variant: "destructive",
+      });
+    }
+  };
 
-
-  const handleSaveInvoice = (data: Invoice) => {
-     try {
-        // Ensure the logo from the state is included if it exists
-        const invoiceData = { ...data, logoUrl: logo };
-        addInvoice(invoiceData);
-        toast({
-            title: "Success",
-            description: "Invoice created successfully.",
-        });
-        router.push('/invoices'); // Redirect to the invoice list page
-     } catch (error) {
-         console.error("Failed to save invoice:", error);
-         toast({
-            title: "Error",
-            description: "Failed to save invoice. Please try again.",
-            variant: "destructive",
-        });
-     }
+  const handleSubmit = async (invoice: Invoice) => {
+    try {
+      await addInvoice(invoice);
+      toast({
+        title: "Success",
+        description: "Invoice created successfully.",
+      });
+      router.push('/invoices');
+    } catch (error) {
+      console.error('Error creating invoice:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create invoice. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (!isClient) {
@@ -70,17 +96,15 @@ export default function NewInvoicePage() {
 
   return (
     <div className="space-y-6">
-        <div className="flex items-center justify-between">
-            <Link href="/invoices" className="flex items-center text-sm text-muted-foreground hover:text-foreground">
-                <ArrowLeft className="mr-1 h-4 w-4" />
-                Back to Invoices
-            </Link>
-            <h1 className="text-2xl font-semibold">Create New Invoice</h1>
-            <div/> {/* Placeholder for alignment */}
-        </div>
-
+      <div className="flex items-center justify-between">
+        <Link href="/invoices" className="flex items-center text-sm text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Invoices
+        </Link>
+        <h1 className="text-3xl font-bold">Create New Invoice</h1>
+      </div>
       <InvoiceForm
-        onSubmit={handleSaveInvoice}
+        onSubmit={handleSubmit}
         onCancel={() => router.push('/invoices')}
         logo={logo}
         onLogoUpload={handleLogoUpload}

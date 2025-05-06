@@ -44,6 +44,8 @@
     "genkit": "^1.0.4",
     "html2pdf.js": "^0.10.2",
     "lucide-react": "^0.475.0",
+    "mongodb": "^6.16.0",
+    "mongoose": "^8.14.1",
     "next": "15.2.3",
     "nextn": "file:",
     "patch-package": "^8.0.0",

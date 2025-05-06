@@ -1,11 +1,18 @@
-
 export interface InvoiceItem {
-  id: string; // Unique ID for each item row
+  id?: string;
   name: string;
+  description?: string;
   quantity: number;
   rate: number;
-  description: string;
   total: number;
+}
+
+export interface PaymentHistory {
+  invoiceId: string;
+  invoiceNumber: string;
+  amount: number;
+  date: string;
+  status: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue';
 }
 
 export interface Invoice {
@@ -23,4 +30,8 @@ export interface Invoice {
   balanceDue: number;
   paymentStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue';
   logoUrl?: string | null; // Optional: Store logo as Data URL or path
+  previousPendingAmounts: PaymentHistory[];
+  totalPendingAmount: number;
+  previousOutstanding: number; // Previous outstanding balance
+  note?: string; // Optional note about the invoice
 }

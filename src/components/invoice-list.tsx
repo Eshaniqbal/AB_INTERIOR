@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -15,7 +14,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Edit, Trash2, Search, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Eye, Edit, Trash2, Search, ArrowLeft, ArrowRight, Plus } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { deleteInvoice } from '@/lib/storage';
 import { useToast } from "@/hooks/use-toast";
@@ -74,6 +73,7 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
     return invoices.filter(invoice =>
       invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
       invoice.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      invoice.customerPhone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       formatDate(invoice.invoiceDate).toLowerCase().includes(searchTerm.toLowerCase())
     ).sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()); // Sort by newest first
   }, [invoices, searchTerm]);
@@ -84,16 +84,25 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
     return filteredInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredInvoices, currentPage]);
 
-  const handleDeleteClick = (id: string, invoiceNumber: string) => {
+  const handleDeleteClick = async (id: string, invoiceNumber: string) => {
+    try {
+      await deleteInvoice(id);
       setInvoices((prevInvoices) =>
         prevInvoices.filter((invoice) => invoice.id !== id)
       );
-    deleteInvoice(id);
-    onDelete(id); 
-    toast({
-      title: "Success",
-      description: `Invoice #${invoiceNumber} deleted successfully.`,
-    });
+      onDelete(id);
+      toast({
+        title: "Success",
+        description: `Invoice #${invoiceNumber} deleted successfully.`,
+      });
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete invoice",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleNextPage = () => {
@@ -106,25 +115,30 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center gap-4 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="relative w-full md:w-96">
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            type="search"
-            placeholder="Search by Invoice #, Customer, Date..."
+            placeholder="Search by invoice #, customer name, phone, or date..."
             value={searchTerm}
-            onChange={(e) => {
-                setSearchTerm(e.target.value);
-                if(currentPage !== 1) {
-                  setCurrentPage(1);
-                }
-            }}
-            className="pl-8 w-full"
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-8"
           />
         </div>
-         <Link href="/invoices/new" passHref>
-            <Button>Create New Invoice</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/invoices/new">
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Create New Invoice
+            </Button>
+          </Link>
+          <Button variant="outline" size="sm" onClick={handlePreviousPage} disabled={currentPage === 1}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleNextPage} disabled={currentPage === totalPages}>
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {paginatedInvoices.length > 0 ? (
@@ -134,6 +148,7 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
                 <TableRow>
                 <TableHead>Invoice #</TableHead>
                 <TableHead>Customer</TableHead>
+                <TableHead>Phone</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Due Date</TableHead>
                 <TableHead className="text-right">Amount (₹)</TableHead>
@@ -146,9 +161,10 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
                 <TableRow key={invoice.id}>
                     <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
                     <TableCell>{invoice.customerName}</TableCell>
+                    <TableCell>{invoice.customerPhone || '-'}</TableCell>
                     <TableCell>{formatDate(invoice.invoiceDate)}</TableCell>
                     <TableCell>{formatDate(invoice.dueDate)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(invoice.grandTotal)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(Number(invoice.grandTotal) || 0)}</TableCell>
                     <TableCell>
                     <Badge variant={getStatusVariant(invoice.paymentStatus)}>
                         {invoice.paymentStatus}
@@ -201,28 +217,8 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
       )}
 
       {totalPages > 1 && (
-        <div className="flex justify-between items-center pt-4">
-           <span className="text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages}
-          </span>
-          <div className="flex space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePreviousPage}
-              disabled={currentPage === 1}
-            >
-               <ArrowLeft className="mr-1 h-4 w-4"/> Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNextPage}
-              disabled={currentPage === totalPages}
-            >
-               Next <ArrowRight className="ml-1 h-4 w-4"/>
-            </Button>
-          </div>
+        <div className="flex justify-center text-sm text-muted-foreground">
+          Page {currentPage} of {totalPages}
         </div>
       )}
     </div>

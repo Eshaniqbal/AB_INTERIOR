@@ -1,6 +1,6 @@
 "use client";
 
-import type { Invoice, InvoiceItem } from '@/types/invoice';
+import type { Invoice, InvoiceItem, PaymentHistory } from '@/types/invoice';
 import { useState, useEffect, ChangeEvent, useMemo } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -24,6 +24,10 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/use-toast";
+import { useRouter } from "next/navigation";
+import { addInvoice, loadInvoices } from '@/lib/storage';
+import { Badge } from "@/components/ui/badge";
 
 const itemSchema = z.object({
   id: z.string().optional(), // Keep optional for new items
@@ -45,6 +49,7 @@ const invoiceSchema = z.object({
   customerGst: z.string().optional(),
   items: z.array(itemSchema).min(1, "At least one item is required"),
   amountPaid: z.coerce.number().min(0, "Amount paid cannot be negative").default(0),
+  previousOutstanding: z.coerce.number().min(0, "Previous outstanding cannot be negative").default(0),
   paymentStatus: z.enum(['Paid', 'Partial', 'Unpaid', 'Overdue']).default('Unpaid'),
   logoUrl: z.string().optional().nullable(),
 });
@@ -62,14 +67,28 @@ interface InvoiceFormProps {
 
 export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUpload, onLogoDelete }: InvoiceFormProps) {
   const [localLogo, setLocalLogo] = useState<string | null>(logo);
+  const [previousPendingAmounts, setPreviousPendingAmounts] = useState<Array<{
+    invoiceId: string;
+    invoiceNumber: string;
+    amount: number;
+    date: string;
+    status: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue';
+  }>>([]);
+  const [totalPendingAmount, setTotalPendingAmount] = useState<number>(0);
+  const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
+  const router = useRouter();
 
    const defaultValues: Partial<InvoiceFormData> = useMemo(() => initialData
     ? {
         ...initialData,
         invoiceDate: initialData.invoiceDate ? new Date(initialData.invoiceDate) : new Date(),
         dueDate: initialData.dueDate ? new Date(initialData.dueDate) : new Date(new Date().setDate(new Date().getDate() + 15)), // Default due date 15 days from now
-        items: initialData.items.map(item => ({ ...item, total: (item.quantity || 0) * (item.rate || 0) })), // Pre-calculate total
+        items: initialData.items?.map(item => ({ 
+          ...item, 
+          total: (item.quantity || 0) * (item.rate || 0) 
+        })) || [{ id: crypto.randomUUID(), name: '', quantity: 1, rate: 0, description: '', total: 0 }],
         amountPaid: initialData.amountPaid ?? 0,
+        previousOutstanding: initialData.previousOutstanding ?? 0,
         paymentStatus: initialData.paymentStatus ?? 'Unpaid',
         logoUrl: initialData.logoUrl ?? logo,
       }
@@ -79,6 +98,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
         dueDate: new Date(new Date().setDate(new Date().getDate() + 15)),
         items: [{ id: crypto.randomUUID(), name: '', quantity: 1, rate: 0, description: '', total: 0 }],
         amountPaid: 0,
+        previousOutstanding: 0,
         paymentStatus: 'Unpaid',
         logoUrl: logo,
       }, [initialData, logo]); // Depend on initialData and logo
@@ -103,6 +123,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
 
   const watchedItems = watch('items');
   const watchedAmountPaid = watch('amountPaid');
+  const watchedPreviousOutstanding = watch('previousOutstanding');
   const watchedDueDate = watch('dueDate');
 
   // Function to calculate item total
@@ -117,10 +138,14 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
     }, 0);
   }, [watchedItems]);
 
+  const totalAmountDue = useMemo(() => {
+    return grandTotal + totalPendingAmount;
+  }, [grandTotal, totalPendingAmount]);
+
   const balanceDue = useMemo(() => {
     const amountPaidNumber = Number(watchedAmountPaid) || 0;
-    return grandTotal - amountPaidNumber;
-  }, [grandTotal, watchedAmountPaid]);
+    return totalAmountDue - amountPaidNumber;
+  }, [totalAmountDue, watchedAmountPaid]);
 
   // Update item total when quantity or rate changes
   useEffect(() => {
@@ -136,7 +161,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
         let newPaymentStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue' = 'Unpaid';
 
         if (amountPaidNumber > 0) {
-            if (amountPaidNumber >= grandTotal) {
+            if (amountPaidNumber >= totalAmountDue) {
                 newPaymentStatus = 'Paid';
             } else {
                 newPaymentStatus = 'Partial';
@@ -153,7 +178,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
         if (currentPaymentStatus !== newPaymentStatus) {
             setValue('paymentStatus', newPaymentStatus, { shouldValidate: true, shouldDirty: true });
         }
-    }, [watchedAmountPaid, grandTotal, balanceDue, watchedDueDate, setValue, watch]);
+    }, [watchedAmountPaid, totalAmountDue, balanceDue, watchedDueDate, setValue, watch]);
 
 
   const handleLogoUpload = (event: ChangeEvent<HTMLInputElement>) => {
@@ -190,8 +215,12 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
             ...initialData,
             invoiceDate: initialData.invoiceDate ? new Date(initialData.invoiceDate) : new Date(),
             dueDate: initialData.dueDate ? new Date(initialData.dueDate) : new Date(new Date().setDate(new Date().getDate() + 15)),
-            items: initialData.items.map(item => ({ ...item, total: (item.quantity || 0) * (item.rate || 0) })),
+            items: initialData.items?.map(item => ({ 
+              ...item, 
+              total: (item.quantity || 0) * (item.rate || 0) 
+            })) || [{ id: crypto.randomUUID(), name: '', quantity: 1, rate: 0, description: '', total: 0 }],
             amountPaid: initialData.amountPaid ?? 0,
+            previousOutstanding: initialData.previousOutstanding ?? 0,
             paymentStatus: initialData.paymentStatus ?? 'Unpaid',
             logoUrl: initialData.logoUrl ?? logo,
         }
@@ -201,55 +230,190 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
             dueDate: new Date(new Date().setDate(new Date().getDate() + 15)),
             items: [{ id: crypto.randomUUID(), name: '', quantity: 1, rate: 0, description: '', total: 0 }],
             amountPaid: 0,
+            previousOutstanding: 0,
             paymentStatus: 'Unpaid',
             logoUrl: logo,
         };
       reset(resetData);
   }, [initialData, reset, logo]);
 
-  const processSubmit = (data: InvoiceFormData) => {
-    // Recalculate final totals and status based on submitted data
-    const finalItems = data.items.map(item => ({
-      ...item,
-      id: item.id || crypto.randomUUID(),
-      total: (Number(item.quantity) || 0) * (Number(item.rate) || 0),
-      description: item.description || '', // Ensure description is always a string
-    }));
+  const processSubmit = async (data: InvoiceFormData) => {
+    try {
+      const items = data.items.map(item => ({
+        ...item,
+        total: (item.quantity || 0) * (item.rate || 0),
+        id: item.id || crypto.randomUUID(),
+        description: item.description || ''
+      }));
 
-    const calculatedGrandTotal = finalItems.reduce((sum, item) => sum + item.total, 0);
-    const amountPaidNumber = Number(data.amountPaid) || 0;
-    const calculatedBalanceDue = calculatedGrandTotal - amountPaidNumber;
+      // Get all invoices for the same customer using phone number
+      const allInvoices = await loadInvoices();
+      const customerInvoices = allInvoices.filter(inv => 
+        inv.customerPhone === data.customerPhone && 
+        inv.id !== data.id && 
+        inv.paymentStatus !== 'Paid'
+      );
 
-    let calculatedPaymentStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue' = 'Unpaid';
-    if (amountPaidNumber > 0) {
-        if(amountPaidNumber >= calculatedGrandTotal) {
-            calculatedPaymentStatus = 'Paid';
+      const previousPendingAmounts = customerInvoices.map(inv => ({
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        amount: inv.balanceDue,
+        date: inv.dueDate,
+        status: inv.paymentStatus
+      }));
+
+      const totalPendingAmount = previousPendingAmounts.reduce((sum, inv) => sum + inv.amount, 0);
+
+      // Calculate totals including previous outstanding
+      const currentInvoiceTotal = items.reduce((sum, item) => sum + item.total, 0);
+      const totalAmountDue = currentInvoiceTotal + totalPendingAmount;
+      const balanceDue = totalAmountDue - data.amountPaid;
+
+      // Determine payment status
+      let paymentStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue' = 'Unpaid';
+      if (data.amountPaid > 0) {
+        if (data.amountPaid >= totalAmountDue) {
+          paymentStatus = 'Paid';
         } else {
-            calculatedPaymentStatus = 'Partial';
+          paymentStatus = 'Partial';
         }
-    }
-     // Check for Overdue only if not Paid or Partial and balance is positive
-    if (calculatedPaymentStatus === 'Unpaid' && calculatedBalanceDue > 0 && data.dueDate && new Date(data.dueDate) < new Date()) {
-            calculatedPaymentStatus = 'Overdue';
-    }
+      } else if (balanceDue > 0 && new Date(data.dueDate) < new Date()) {
+        paymentStatus = 'Overdue';
+      }
 
-    const finalData: Invoice = {
-      id: initialData?.id || crypto.randomUUID(),
-      invoiceNumber: data.invoiceNumber,
-      invoiceDate: data.invoiceDate.toISOString(),
-      dueDate: data.dueDate.toISOString(),
-      customerName: data.customerName,
-      customerAddress: data.customerAddress,
-      customerPhone: data.customerPhone || '',
-      customerGst: data.customerGst || '',
-      items: finalItems,
-      grandTotal: calculatedGrandTotal,
-      amountPaid: amountPaidNumber,
-      balanceDue: calculatedBalanceDue,
-      paymentStatus: data.paymentStatus ?? calculatedPaymentStatus,
-      logoUrl: localLogo,
-    };
-    onSubmit(finalData);
+      const invoice: Invoice = {
+        id: data.id || Date.now().toString(),
+        invoiceNumber: data.invoiceNumber,
+        invoiceDate: data.invoiceDate.toISOString(),
+        dueDate: data.dueDate.toISOString(),
+        customerName: data.customerName,
+        customerAddress: data.customerAddress,
+        customerPhone: data.customerPhone || '',
+        customerGst: data.customerGst || '',
+        items: items,
+        grandTotal: currentInvoiceTotal,
+        amountPaid: data.amountPaid,
+        balanceDue: balanceDue,
+        paymentStatus: paymentStatus,
+        logoUrl: data.logoUrl,
+        previousPendingAmounts,
+        totalPendingAmount,
+        previousOutstanding: totalPendingAmount,
+        note: totalPendingAmount > 0 ? `Includes previous outstanding balance of ${formatCurrency(totalPendingAmount)} from ${previousPendingAmounts.length} invoice${previousPendingAmounts.length > 1 ? 's' : ''}` : undefined
+      };
+
+      await addInvoice(invoice);
+      toast({
+        title: "Success",
+        description: `Invoice saved successfully${totalPendingAmount > 0 ? ` with previous outstanding balance of ${formatCurrency(totalPendingAmount)}` : ''}.`,
+      });
+      router.push('/invoices');
+    } catch (error) {
+      console.error('Error saving invoice:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save invoice. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Add this helper function for status badges
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case 'Paid':
+        return 'default';
+      case 'Partial':
+        return 'outline';
+      case 'Overdue':
+        return 'destructive';
+      default:
+        return 'secondary';
+    }
+  };
+
+  const attachPreviousBalance = () => {
+    if (totalPendingAmount > 0) {
+      // Set the previous outstanding amount
+      setValue('previousOutstanding', totalPendingAmount, { shouldValidate: true });
+      
+      // Calculate new totals
+      const newTotalAmountDue = grandTotal + totalPendingAmount;
+      const amountPaidNumber = Number(watch('amountPaid')) || 0;
+      const newBalanceDue = newTotalAmountDue - amountPaidNumber;
+      
+      // Update payment status
+      let newPaymentStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue' = 'Unpaid';
+      if (amountPaidNumber > 0) {
+        if (amountPaidNumber >= newTotalAmountDue) {
+          newPaymentStatus = 'Paid';
+        } else {
+          newPaymentStatus = 'Partial';
+        }
+      }
+      setValue('paymentStatus', newPaymentStatus, { shouldValidate: true });
+      
+      toast({
+        title: "Success",
+        description: `Previous balance of ${formatCurrency(totalPendingAmount)} added to previous outstanding. New total amount due: ${formatCurrency(newTotalAmountDue)}`,
+      });
+    }
+  };
+
+  const fetchPreviousRecords = async () => {
+    try {
+      setIsLoadingPrevious(true);
+      const customerPhone = watch('customerPhone');
+      if (!customerPhone) {
+        toast({
+          title: "Error",
+          description: "Please enter customer phone number first",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const allInvoices = await loadInvoices();
+      const customerInvoices = allInvoices.filter(inv => 
+        inv.customerPhone === customerPhone && 
+        inv.id !== watch('id') && 
+        inv.paymentStatus !== 'Paid'
+      );
+
+      const previousPendingAmounts = customerInvoices.map(inv => ({
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        amount: inv.balanceDue,
+        date: inv.dueDate,
+        status: inv.paymentStatus
+      }));
+
+      const totalPendingAmount = previousPendingAmounts.reduce((sum, inv) => sum + inv.amount, 0);
+
+      setPreviousPendingAmounts(previousPendingAmounts);
+      setTotalPendingAmount(totalPendingAmount);
+
+      if (previousPendingAmounts.length === 0) {
+        toast({
+          title: "No Records",
+          description: "No previous pending records found for this customer",
+        });
+      } else {
+        toast({
+          title: "Success",
+          description: `Found ${previousPendingAmounts.length} previous pending records`,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching previous records:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch previous records",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingPrevious(false);
+    }
   };
 
   return (
@@ -515,6 +679,22 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
             {/* Totals Section */}
             <div className="space-y-2 text-right">
                 <div className="flex justify-between items-center">
+                    <Label>Previous Outstanding (₹):</Label>
+                    <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        id="previousOutstanding"
+                        {...register('previousOutstanding')}
+                        className="w-[120px] text-right"
+                        aria-invalid={errors.previousOutstanding ? "true" : "false"}
+                        value={totalPendingAmount}
+                        readOnly
+                    />
+                </div>
+                 {errors.previousOutstanding && <p className="text-destructive text-sm mt-1">{errors.previousOutstanding.message}</p>}
+
+                <div className="flex justify-between items-center">
                     <Label>Amount Paid (₹):</Label>
                     <Input
                         type="number"
@@ -524,22 +704,99 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
                         {...register('amountPaid')}
                         className="w-[120px] text-right"
                         aria-invalid={errors.amountPaid ? "true" : "false"}
-                        />
+                    />
                 </div>
                  {errors.amountPaid && <p className="text-destructive text-sm mt-1">{errors.amountPaid.message}</p>}
 
                 <div className="flex justify-between items-center font-semibold">
-                    <span>Grand Total:</span>
+                    <span>Current Invoice Amount:</span>
                      {/* Display calculated grand total */}
-                    <span>₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span>₹{formatCurrency(grandTotal)}</span>
                 </div>
+
+                <div className="flex justify-between items-center font-semibold">
+                    <span>Total Amount Due:</span>
+                     {/* Display calculated total amount due */}
+                    <span>₹{formatCurrency(totalAmountDue)}</span>
+                </div>
+
                 <div className="flex justify-between items-center font-semibold text-primary">
                     <span>Balance Due:</span>
                      {/* Display calculated balance due */}
-                    <span>₹{balanceDue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span>₹{formatCurrency(balanceDue)}</span>
                 </div>
             </div>
           </div>
+
+          {/* Previous Pending Amounts Section */}
+          <div className="flex justify-between items-center">
+            <h3 className="text-lg font-semibold">Previous Pending Amounts</h3>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={fetchPreviousRecords}
+                disabled={isLoadingPrevious}
+              >
+                {isLoadingPrevious ? (
+                  <div className="flex items-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+                    Loading...
+                  </div>
+                ) : (
+                  "Fetch Previous Records"
+                )}
+              </Button>
+              {totalPendingAmount > 0 && (
+                <Button
+                  type="button"
+                  variant="default"
+                  onClick={attachPreviousBalance}
+                >
+                  Attach Previous Balance
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {previousPendingAmounts.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Previous Pending Amounts</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Invoice #</TableHead>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {previousPendingAmounts.map((pending) => (
+                      <TableRow key={pending.invoiceId}>
+                        <TableCell>{pending.invoiceNumber}</TableCell>
+                        <TableCell>{formatDate(pending.date)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(pending.amount)}</TableCell>
+                        <TableCell>
+                          <Badge variant={getStatusVariant(pending.status)}>
+                            {pending.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="mt-4 text-right">
+                  <p className="text-lg font-semibold">
+                    Total Pending Amount: {formatCurrency(totalPendingAmount)}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </CardContent>
 
         <CardFooter className="flex justify-between p-6 bg-secondary print-bg-secondary print-hide">

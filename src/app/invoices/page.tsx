@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -13,16 +12,28 @@ export default function InvoicesListPage() {
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true); // Indicate component has mounted on client
-    // Load invoices only on the client side after mount
-    const loaded = loadInvoices();
-    setInvoices(loaded);
-    setIsLoading(false);
-  }, []); // Empty dependency array ensures this runs once on mount
+    setIsClient(true);
+    const fetchInvoices = async () => {
+      try {
+        const loaded = await loadInvoices();
+        setInvoices(loaded);
+      } catch (error) {
+        console.error('Error loading invoices:', error);
+        setInvoices([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchInvoices();
+  }, []);
 
-  const handleDeleteInvoice = (id: string) => {
-    // Re-load invoices from storage to reflect the deletion
-    setInvoices(loadInvoices());
+  const handleDeleteInvoice = async (id: string) => {
+    try {
+      const updatedInvoices = await loadInvoices();
+      setInvoices(updatedInvoices);
+    } catch (error) {
+      console.error('Error reloading invoices after deletion:', error);
+    }
   };
 
   return (
@@ -30,9 +41,27 @@ export default function InvoicesListPage() {
       <h1 className="text-3xl font-bold text-primary">Saved Invoices</h1>
 
       {isClient ? (
-           <InvoiceList invoices={invoices} onDelete={handleDeleteInvoice} />
+        isLoading ? (
+          // Skeleton Loader while loading
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <Skeleton className="h-10 w-1/3" />
+              <Skeleton className="h-10 w-32" />
+            </div>
+            <Skeleton className="h-64 w-full rounded-lg" />
+            <div className="flex justify-between items-center">
+              <Skeleton className="h-6 w-24" />
+              <div className="flex space-x-2">
+                <Skeleton className="h-9 w-24" />
+                <Skeleton className="h-9 w-24" />
+              </div>
+            </div>
+          </div>
         ) : (
-        // Skeleton Loader while waiting for client mount
+          <InvoiceList invoices={invoices} onDelete={handleDeleteInvoice} />
+        )
+      ) : (
+        // Initial server render
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <Skeleton className="h-10 w-1/3" />
@@ -42,8 +71,8 @@ export default function InvoicesListPage() {
           <div className="flex justify-between items-center">
             <Skeleton className="h-6 w-24" />
             <div className="flex space-x-2">
-                <Skeleton className="h-9 w-24" />
-                <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-9 w-24" />
+              <Skeleton className="h-9 w-24" />
             </div>
           </div>
         </div>
