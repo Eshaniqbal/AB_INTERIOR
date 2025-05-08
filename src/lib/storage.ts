@@ -55,12 +55,22 @@ export const addInvoice = async (invoice: Invoice): Promise<void> => {
   }
 };
 
-export const updateInvoice = (updatedInvoice: Invoice): void => {
-  const invoices = loadInvoices();
-  const index = invoices.findIndex(inv => inv.id === updatedInvoice.id);
-  if (index !== -1) {
-    invoices[index] = updatedInvoice;
-    saveInvoices(invoices);
+export const updateInvoice = async (updatedInvoice: Invoice): Promise<void> => {
+  try {
+    const response = await fetch(`/api/invoices/${updatedInvoice.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updatedInvoice),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to update invoice');
+    }
+  } catch (error) {
+    console.error('Error updating invoice:', error);
+    throw error;
   }
 };
 
@@ -142,5 +152,19 @@ export const deleteLogo = async (): Promise<void> => {
   } catch (error) {
     console.error('Error deleting logo:', error);
     throw error;
+  }
+};
+
+export const getLatestInvoiceByCustomerPhone = async (customerPhone: string): Promise<Invoice | null> => {
+  try {
+    const response = await fetch(`/api/invoices?customerPhone=${encodeURIComponent(customerPhone)}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch latest invoice');
+    }
+    const data = await response.json();
+    return data || null;
+  } catch (error) {
+    console.error('Error fetching latest invoice:', error);
+    return null;
   }
 };

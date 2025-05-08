@@ -26,7 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/use-toast";
 import { useRouter } from "next/navigation";
-import { addInvoice, loadInvoices } from '@/lib/storage';
+import { addInvoice, loadInvoices, getLatestInvoiceByCustomerPhone } from '@/lib/storage';
 import { Badge } from "@/components/ui/badge";
 
 const itemSchema = z.object({
@@ -237,6 +237,46 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
       reset(resetData);
   }, [initialData, reset, logo]);
 
+  const fetchPreviousOutstanding = async () => {
+    try {
+      setIsLoadingPrevious(true);
+      const customerPhone = watch('customerPhone');
+      if (!customerPhone) {
+        toast({
+          title: "Error",
+          description: "Please enter customer phone number first",
+          variant: "destructive",
+        });
+        return;
+      }
+      const latestInvoice = await getLatestInvoiceByCustomerPhone(customerPhone);
+      const previousOutstanding = latestInvoice ? Number(latestInvoice.previousOutstanding || 0) + Number(latestInvoice.grandTotal || 0) - Number(latestInvoice.amountPaid || 0) : 0;
+      setPreviousPendingAmounts(latestInvoice ? [{
+        invoiceId: latestInvoice.id,
+        invoiceNumber: latestInvoice.invoiceNumber,
+        amount: previousOutstanding,
+        date: latestInvoice.dueDate,
+        status: latestInvoice.paymentStatus
+      }] : []);
+      setTotalPendingAmount(previousOutstanding);
+      setValue('previousOutstanding', previousOutstanding, { shouldValidate: true });
+      if (!latestInvoice) {
+        toast({
+          title: "No Records",
+          description: "No previous invoice found for this customer",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch previous outstanding.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingPrevious(false);
+    }
+  };
+
   const processSubmit = async (data: InvoiceFormData) => {
     try {
       const items = data.items.map(item => ({
@@ -246,27 +286,16 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
         description: item.description || ''
       }));
 
-      // Get all invoices for the same customer using phone number
-      const allInvoices = await loadInvoices();
-      const customerInvoices = allInvoices.filter(inv => 
-        inv.customerPhone === data.customerPhone && 
-        inv.id !== data.id && 
-        inv.paymentStatus !== 'Paid'
-      );
-
-      const previousPendingAmounts = customerInvoices.map(inv => ({
-        invoiceId: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        amount: inv.balanceDue,
-        date: inv.dueDate,
-        status: inv.paymentStatus
-      }));
-
-      const totalPendingAmount = previousPendingAmounts.reduce((sum, inv) => sum + inv.amount, 0);
+      // Fetch only the latest invoice for this customer
+      let previousOutstanding = 0;
+      if (data.customerPhone) {
+        const latestInvoice = await getLatestInvoiceByCustomerPhone(data.customerPhone);
+        previousOutstanding = latestInvoice ? Number(latestInvoice.previousOutstanding || 0) + Number(latestInvoice.grandTotal || 0) - Number(latestInvoice.amountPaid || 0) : 0;
+      }
 
       // Calculate totals including previous outstanding
       const currentInvoiceTotal = items.reduce((sum, item) => sum + item.total, 0);
-      const totalAmountDue = currentInvoiceTotal + totalPendingAmount;
+      const totalAmountDue = currentInvoiceTotal + previousOutstanding;
       const balanceDue = totalAmountDue - data.amountPaid;
 
       // Determine payment status
@@ -282,7 +311,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
       }
 
       const invoice: Invoice = {
-        id: data.id || Date.now().toString(),
+        id: initialData?.id || crypto.randomUUID(),
         invoiceNumber: data.invoiceNumber,
         invoiceDate: data.invoiceDate.toISOString(),
         dueDate: data.dueDate.toISOString(),
@@ -296,16 +325,16 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
         balanceDue: balanceDue,
         paymentStatus: paymentStatus,
         logoUrl: data.logoUrl,
-        previousPendingAmounts,
-        totalPendingAmount,
-        previousOutstanding: totalPendingAmount,
-        note: totalPendingAmount > 0 ? `Includes previous outstanding balance of ${formatCurrency(totalPendingAmount)} from ${previousPendingAmounts.length} invoice${previousPendingAmounts.length > 1 ? 's' : ''}` : undefined
+        previousPendingAmounts: previousPendingAmounts,
+        totalPendingAmount: previousOutstanding,
+        previousOutstanding: previousOutstanding,
+        note: previousOutstanding > 0 ? `Includes previous outstanding balance of ${formatCurrency(previousOutstanding)} from last invoice` : undefined
       };
 
       await addInvoice(invoice);
       toast({
         title: "Success",
-        description: `Invoice saved successfully${totalPendingAmount > 0 ? ` with previous outstanding balance of ${formatCurrency(totalPendingAmount)}` : ''}.`,
+        description: `Invoice saved successfully${previousOutstanding > 0 ? ` with previous outstanding balance of ${formatCurrency(previousOutstanding)}` : ''}.`,
       });
       router.push('/invoices');
     } catch (error) {
@@ -357,62 +386,6 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
         title: "Success",
         description: `Previous balance of ${formatCurrency(totalPendingAmount)} added to previous outstanding. New total amount due: ${formatCurrency(newTotalAmountDue)}`,
       });
-    }
-  };
-
-  const fetchPreviousRecords = async () => {
-    try {
-      setIsLoadingPrevious(true);
-      const customerPhone = watch('customerPhone');
-      if (!customerPhone) {
-        toast({
-          title: "Error",
-          description: "Please enter customer phone number first",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const allInvoices = await loadInvoices();
-      const customerInvoices = allInvoices.filter(inv => 
-        inv.customerPhone === customerPhone && 
-        inv.id !== watch('id') && 
-        inv.paymentStatus !== 'Paid'
-      );
-
-      const previousPendingAmounts = customerInvoices.map(inv => ({
-        invoiceId: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        amount: inv.balanceDue,
-        date: inv.dueDate,
-        status: inv.paymentStatus
-      }));
-
-      const totalPendingAmount = previousPendingAmounts.reduce((sum, inv) => sum + inv.amount, 0);
-
-      setPreviousPendingAmounts(previousPendingAmounts);
-      setTotalPendingAmount(totalPendingAmount);
-
-      if (previousPendingAmounts.length === 0) {
-        toast({
-          title: "No Records",
-          description: "No previous pending records found for this customer",
-        });
-      } else {
-        toast({
-          title: "Success",
-          description: `Found ${previousPendingAmounts.length} previous pending records`,
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching previous records:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch previous records",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingPrevious(false);
     }
   };
 
@@ -735,7 +708,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
               <Button
                 type="button"
                 variant="outline"
-                onClick={fetchPreviousRecords}
+                onClick={fetchPreviousOutstanding}
                 disabled={isLoadingPrevious}
               >
                 {isLoadingPrevious ? (

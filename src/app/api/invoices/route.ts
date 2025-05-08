@@ -2,9 +2,17 @@ import { NextResponse } from 'next/server';
 import { connectDB, InvoiceModel } from '@/lib/mongodb';
 import type { Invoice } from '@/types/invoice';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await connectDB();
+    const { searchParams } = new URL(request.url);
+    const customerPhone = searchParams.get('customerPhone');
+    if (customerPhone) {
+      // Fetch only the latest invoice for this customer
+      const latestInvoice = await InvoiceModel.findOne({ customerPhone }).sort({ invoiceDate: -1 });
+      return NextResponse.json(latestInvoice || null);
+    }
+    // Default: fetch all invoices
     const invoices = await InvoiceModel.find({}).sort({ invoiceDate: -1 });
     return NextResponse.json(invoices);
   } catch (error) {

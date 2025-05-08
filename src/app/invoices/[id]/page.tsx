@@ -20,6 +20,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 export default function ViewInvoicePage() {
   const router = useRouter();
@@ -29,6 +31,9 @@ export default function ViewInvoicePage() {
   const [logo, setLogo] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [isPaying, setIsPaying] = useState(false);
 
   const invoiceId = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -78,6 +83,45 @@ export default function ViewInvoicePage() {
     }
   };
 
+  const handleRecordPayment = async () => {
+    if (!invoice) return;
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: 'Error', description: 'Enter a valid payment amount.', variant: 'destructive' });
+      return;
+    }
+    setIsPaying(true);
+    try {
+      const newAmountPaid = (Number(invoice.amountPaid) || 0) + amount;
+      const newBalanceDue = (Number(invoice.grandTotal) + Number(invoice.previousOutstanding || 0)) - newAmountPaid;
+      let newPaymentStatus: Invoice['paymentStatus'] = 'Unpaid';
+      if (newAmountPaid >= (Number(invoice.grandTotal) + Number(invoice.previousOutstanding || 0))) {
+        newPaymentStatus = 'Paid';
+      } else if (newAmountPaid > 0) {
+        newPaymentStatus = 'Partial';
+      }
+      const updatedInvoice = {
+        ...invoice,
+        amountPaid: newAmountPaid,
+        balanceDue: newBalanceDue,
+        paymentStatus: newPaymentStatus,
+      };
+      await fetch(`/api/invoices/${invoice.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedInvoice),
+      });
+      setInvoice(updatedInvoice);
+      setShowPaymentDialog(false);
+      setPaymentAmount('');
+      toast({ title: 'Success', description: 'Payment recorded successfully.' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to record payment.', variant: 'destructive' });
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
   if (!isClient || isLoading) {
     return <div className="flex justify-center items-center min-h-screen"><p>Loading invoice...</p></div>;
   }
@@ -94,6 +138,9 @@ export default function ViewInvoicePage() {
           Back to Invoices
         </Link>
         <div className="flex space-x-2">
+          <Button variant="default" size="sm" onClick={() => setShowPaymentDialog(true)}>
+            Record Payment
+          </Button>
           <Link href={`/invoices/${invoiceId}/edit`} passHref>
             <Button variant="outline" size="sm">
               <Edit className="mr-2 h-4 w-4" /> Edit
@@ -125,6 +172,39 @@ export default function ViewInvoicePage() {
       </div>
 
       <InvoicePreview invoice={invoice} logoUrl={invoice.logoUrl || logo} />
+
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Record Payment</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="block mb-1 font-medium">Outstanding Amount</label>
+              <div className="mb-2">₹{(Number(invoice.grandTotal) + Number(invoice.previousOutstanding || 0) - Number(invoice.amountPaid || 0)).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div>
+              <label className="block mb-1 font-medium" htmlFor="paymentAmount">Payment Amount</label>
+              <Input
+                id="paymentAmount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={paymentAmount}
+                onChange={e => setPaymentAmount(e.target.value)}
+                disabled={isPaying}
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPaymentDialog(false)} disabled={isPaying}>Cancel</Button>
+            <Button onClick={handleRecordPayment} disabled={isPaying || !paymentAmount}>
+              {isPaying ? 'Recording...' : 'Record Payment'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

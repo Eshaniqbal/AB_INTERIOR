@@ -86,4 +86,29 @@ export async function DELETE(
       { status: 500 }
     );
   }
+}
+
+export async function PUT(request: Request, { params }: { params: { id: string } }) {
+  try {
+    await connectDB();
+    const url = new URL(request.url);
+    const pathSegments = url.pathname.split('/');
+    const invoiceId = pathSegments[pathSegments.length - 1];
+    if (!invoiceId) {
+      return NextResponse.json({ error: 'Invoice ID is required' }, { status: 400 });
+    }
+    const updatedData: Partial<Invoice> = await request.json();
+    const updatedInvoice = await InvoiceModel.findOneAndUpdate(
+      { id: invoiceId },
+      updatedData,
+      { new: true }
+    );
+    if (!updatedInvoice) {
+      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+    }
+    return NextResponse.json(updatedInvoice);
+  } catch (error) {
+    console.error('Error updating invoice:', error);
+    return NextResponse.json({ error: 'Failed to update invoice' }, { status: 500 });
+  }
 } 
