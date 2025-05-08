@@ -84,6 +84,28 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
     return filteredInvoices.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredInvoices, currentPage]);
 
+  // Compute entry numbers and recent status for each invoice by customer phone
+  const entryInfo = useMemo(() => {
+    // Group invoices by customerPhone and sort by invoiceDate ascending
+    const groups: Record<string, Invoice[]> = {};
+    invoices.forEach(inv => {
+      if (!groups[inv.customerPhone]) groups[inv.customerPhone] = [];
+      groups[inv.customerPhone].push(inv);
+    });
+    Object.values(groups).forEach(list => list.sort((a, b) => new Date(a.invoiceDate).getTime() - new Date(b.invoiceDate).getTime()));
+    // Map invoice id to entry number and recent status
+    const map: Record<string, { number: number, isRecent: boolean }> = {};
+    Object.values(groups).forEach(list => {
+      list.forEach((inv, idx) => {
+        map[inv.id] = {
+          number: idx + 1,
+          isRecent: idx === list.length - 1
+        };
+      });
+    });
+    return map;
+  }, [invoices]);
+
   const handleDeleteClick = async (id: string, invoiceNumber: string) => {
     try {
       await deleteInvoice(id);
@@ -159,7 +181,22 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
             <TableBody>
                 {paginatedInvoices.map((invoice) => (
                 <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
+                    <TableCell className="font-medium">
+                      {invoice.invoiceNumber}
+                      {invoice.customerPhone && (
+                        <Badge variant="secondary" className="ml-2">
+                          {entryInfo[invoice.id]?.isRecent
+                            ? 'Recent'
+                            : entryInfo[invoice.id]?.number === 1
+                            ? '1st Invoice'
+                            : entryInfo[invoice.id]?.number === 2
+                            ? '2nd Invoice'
+                            : entryInfo[invoice.id]?.number === 3
+                            ? '3rd Invoice'
+                            : `${entryInfo[invoice.id]?.number}th Invoice`}
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell>{invoice.customerName}</TableCell>
                     <TableCell>{invoice.customerPhone || '-'}</TableCell>
                     <TableCell>{formatDate(invoice.invoiceDate)}</TableCell>
