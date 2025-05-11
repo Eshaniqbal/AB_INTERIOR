@@ -94,4 +94,28 @@ const companySchema = new mongoose.Schema({
 });
 
 // Models
-export const CompanyModel = mongoose.models.Company || mongoose.model('Company', companySchema); 
+export const CompanyModel = mongoose.models.Company || mongoose.model('Company', companySchema);
+
+// Worker Schema
+const WorkerSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  phone: { type: String },
+  address: { type: String },
+  joiningDate: { type: String },
+  monthlySalary: { type: Number, required: true, default: 0 },
+});
+
+export const WorkerModel = mongoose.models.Worker || mongoose.model('Worker', WorkerSchema);
+
+// WorkerTransaction Schema
+const WorkerTransactionSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true },
+  workerId: { type: String, required: true },
+  type: { type: String, required: true, enum: ['salary', 'advance', 'rental', 'other'] },
+  amount: { type: Number, required: true },
+  date: { type: String, required: true },
+  note: { type: String },
+});
+
+export const WorkerTransactionModel = mongoose.models.WorkerTransaction || mongoose.model('WorkerTransaction', WorkerTransactionSchema); 

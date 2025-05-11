@@ -35,3 +35,23 @@ export interface Invoice {
   previousOutstanding: number; // Previous outstanding balance
   note?: string; // Optional note about the invoice
 }
+
+export interface Worker {
+  id: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  joiningDate?: string;
+  monthlySalary: number;
+}
+
+export type WorkerTransactionType = 'salary' | 'advance' | 'rental' | 'other';
+
+export interface WorkerTransaction {
+  id: string;
+  workerId: string;
+  type: WorkerTransactionType;
+  amount: number;
+  date: string;
+  note?: string;
+}

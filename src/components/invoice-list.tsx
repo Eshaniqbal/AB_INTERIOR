@@ -29,6 +29,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface InvoiceListProps {
   invoices: Invoice[];
@@ -57,6 +64,7 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
 
    // Update local state if the prop changes
    useEffect(() => {
@@ -70,13 +78,20 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
 
 
   const filteredInvoices = useMemo(() => {
-    return invoices.filter(invoice =>
-      invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      invoice.customerPhone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      formatDate(invoice.invoiceDate).toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()); // Sort by newest first
-  }, [invoices, searchTerm]);
+    return invoices
+      .filter(invoice => {
+        const matchesSearch = 
+          invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          invoice.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          invoice.customerPhone?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          formatDate(invoice.invoiceDate).toLowerCase().includes(searchTerm.toLowerCase());
+        
+        const matchesStatus = statusFilter === 'all' || invoice.paymentStatus === statusFilter;
+        
+        return matchesSearch && matchesStatus;
+      })
+      .sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime());
+  }, [invoices, searchTerm, statusFilter]);
 
   const totalPages = Math.ceil(filteredInvoices.length / ITEMS_PER_PAGE);
   const paginatedInvoices = useMemo(() => {
@@ -138,14 +153,28 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
   return (
     <div className="space-y-4">
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full md:w-96">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search by invoice #, customer name, phone, or date..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8"
-          />
+        <div className="flex gap-4 w-full md:w-auto">
+          <div className="relative w-full md:w-96">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by invoice #, customer name, phone, or date..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Invoices</SelectItem>
+              <SelectItem value="Paid">Paid</SelectItem>
+              <SelectItem value="Partial">Partial</SelectItem>
+              <SelectItem value="Unpaid">Unpaid</SelectItem>
+              <SelectItem value="Overdue">Overdue</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex gap-2">
           <Link href="/invoices/new">
@@ -249,7 +278,7 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
         </div>
       ) : (
         <div className="text-center py-10 text-muted-foreground border rounded-lg shadow">
-          No invoices found{searchTerm ? ' matching your search' : ''}.
+          No invoices found{searchTerm || statusFilter !== 'all' ? ' matching your filters' : ''}.
         </div>
       )}
 
