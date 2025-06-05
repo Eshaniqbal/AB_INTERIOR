@@ -1,7 +1,8 @@
 import mongoose from 'mongoose';
 import type { Invoice, InvoiceItem, PaymentHistory } from '@/types/invoice';
+import { MongoClient } from 'mongodb';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://abinteriors:abinteriors@cluster0.8q0qg.mongodb.net/abinteriors?retryWrites=true&w=majority';
+const MONGODB_URI = 'mongodb+srv://eshan:eshan123@abinteriors.cdkfbic.mongodb.net/';
 
 if (!MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
@@ -15,6 +16,7 @@ if (!cached) {
 
 export async function connectDB() {
   if (cached.conn) {
+    console.log('Using cached connection');
     return cached.conn;
   }
 
@@ -23,7 +25,9 @@ export async function connectDB() {
       bufferCommands: false,
     };
 
+    console.log('Creating new connection to MongoDB...');
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
+      console.log('Successfully connected to MongoDB');
       return mongoose;
     });
   }
@@ -32,6 +36,7 @@ export async function connectDB() {
     cached.conn = await cached.promise;
   } catch (e) {
     cached.promise = null;
+    console.error('MongoDB connection error:', e);
     throw e;
   }
 
@@ -118,4 +123,36 @@ const WorkerTransactionSchema = new mongoose.Schema({
   note: { type: String },
 });
 
-export const WorkerTransactionModel = mongoose.models.WorkerTransaction || mongoose.model('WorkerTransaction', WorkerTransactionSchema); 
+export const WorkerTransactionModel = mongoose.models.WorkerTransaction || mongoose.model('WorkerTransaction', WorkerTransactionSchema);
+
+// Delete existing Stock model if it exists
+delete mongoose.models.Stock;
+
+// Stock Schema
+const StockSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  quantity: { type: Number, required: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+}, {
+  timestamps: true // This will automatically handle createdAt and updatedAt
+});
+
+// Create new Stock model
+export const StockModel = mongoose.model('Stock', StockSchema);
+
+let client;
+let clientPromise: Promise<MongoClient>;
+
+if (process.env.NODE_ENV === 'development') {
+  if (!global._mongoClientPromise) {
+    client = new MongoClient(MONGODB_URI);
+    global._mongoClientPromise = client.connect();
+  }
+  clientPromise = global._mongoClientPromise;
+} else {
+  client = new MongoClient(MONGODB_URI);
+  clientPromise = client.connect();
+}
+
+export default clientPromise; 

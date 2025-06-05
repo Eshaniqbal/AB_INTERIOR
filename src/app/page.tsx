@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { PlusCircle, List } from "lucide-react";
+import { PlusCircle, List, Package } from "lucide-react";
 
 export default function Home() {
   return (
@@ -22,6 +22,11 @@ export default function Home() {
           <Link href="/invoices" passHref>
             <Button variant="outline" className="w-full">
               <List className="mr-2 h-5 w-5" /> View Saved Invoices
+            </Button>
+          </Link>
+          <Link href="/stock" passHref>
+            <Button variant="outline" className="w-full">
+              <Package className="mr-2 h-5 w-5" /> Stock Management
             </Button>
           </Link>
         </CardContent>

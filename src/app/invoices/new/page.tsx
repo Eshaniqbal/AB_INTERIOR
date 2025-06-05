@@ -4,16 +4,17 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { InvoiceForm } from '@/components/invoice-form';
 import type { Invoice } from '@/types/invoice';
-import { addInvoice, saveLogo, loadLogo, deleteLogo } from '@/lib/storage';
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import type { Stock } from '@/types/stock';
 
 export default function NewInvoicePage() {
   const router = useRouter();
   const { toast } = useToast();
   const [logo, setLogo] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
+  const [availableStocks, setAvailableStocks] = useState<Stock[]>([]);
 
   useEffect(() => {
     setIsClient(true);
@@ -31,7 +32,24 @@ export default function NewInvoicePage() {
       }
     };
     loadInitialLogo();
+    fetchAvailableStocks();
   }, [toast]);
+
+  const fetchAvailableStocks = async () => {
+    try {
+      const response = await fetch('/api/stock/available');
+      if (!response.ok) throw new Error('Failed to fetch stocks');
+      const stocks = await response.json();
+      setAvailableStocks(stocks);
+    } catch (error) {
+      console.error('Error fetching stocks:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch available stocks.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleLogoUpload = async (file: File) => {
     try {
@@ -73,7 +91,37 @@ export default function NewInvoicePage() {
 
   const handleSubmit = async (invoice: Invoice) => {
     try {
-      await addInvoice(invoice);
+      // Add stock IDs to invoice items if they match with available stocks
+      const itemsWithStockIds = invoice.items.map(item => {
+        const matchingStock = availableStocks.find(stock => stock.name === item.name);
+        if (matchingStock) {
+          return {
+            ...item,
+            stockId: matchingStock._id,
+            availableQuantity: matchingStock.quantity
+          };
+        }
+        return item;
+      });
+
+      const invoiceWithStockIds = {
+        ...invoice,
+        items: itemsWithStockIds
+      };
+
+      const response = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(invoiceWithStockIds),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create invoice');
+      }
+
       toast({
         title: "Success",
         description: "Invoice created successfully.",
@@ -83,14 +131,13 @@ export default function NewInvoicePage() {
       console.error('Error creating invoice:', error);
       toast({
         title: "Error",
-        description: "Failed to create invoice. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to create invoice. Please try again.",
         variant: "destructive",
       });
     }
   };
 
   if (!isClient) {
-    // Optional: Render a loading state or null while waiting for client-side mount
     return <div>Loading...</div>;
   }
 
@@ -109,6 +156,7 @@ export default function NewInvoicePage() {
         logo={logo}
         onLogoUpload={handleLogoUpload}
         onLogoDelete={handleLogoDelete}
+        availableStocks={availableStocks}
       />
     </div>
   );

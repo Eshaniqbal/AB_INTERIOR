@@ -1,6 +1,6 @@
 "use client";
 
-import type { Invoice, InvoiceItem, PaymentHistory } from '@/types/invoice';
+import type { Invoice, PaymentHistory } from '@/types/invoice';
 import { useState, useEffect, ChangeEvent, useMemo } from 'react';
 import { useForm, useFieldArray, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,7 +18,7 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import { Trash2, PlusCircle, Upload, CalendarIcon } from 'lucide-react';
+import { Trash2, PlusCircle, Upload, CalendarIcon, Search, Check } from 'lucide-react';
 import { formatCurrency, generateInvoiceNumber, formatDate } from '@/lib/utils';
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -28,6 +28,8 @@ import { toast } from "@/components/ui/use-toast";
 import { useRouter } from "next/navigation";
 import { addInvoice, loadInvoices, getLatestInvoiceByCustomerPhone } from '@/lib/storage';
 import { Badge } from "@/components/ui/badge";
+import type { Stock } from '@/types/stock';
+import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 
 const itemSchema = z.object({
   id: z.string().optional(), // Keep optional for new items
@@ -36,7 +38,11 @@ const itemSchema = z.object({
   rate: z.coerce.number().min(0, "Rate cannot be negative"),
   description: z.string().optional(),
   total: z.number().optional(), // Calculated, not directly validated in form schema
+  stockId: z.string().optional(),
+  availableQuantity: z.number().optional(),
 });
+
+type FormItem = z.infer<typeof itemSchema>;
 
 const invoiceSchema = z.object({
   id: z.string().optional(), // Optional for new invoices
@@ -51,7 +57,7 @@ const invoiceSchema = z.object({
   amountPaid: z.coerce.number().min(0, "Amount paid cannot be negative").default(0),
   previousOutstanding: z.coerce.number().min(0, "Previous outstanding cannot be negative").default(0),
   paymentStatus: z.enum(['Paid', 'Partial', 'Unpaid', 'Overdue']).default('Unpaid'),
-  logoUrl: z.string().optional().nullable(),
+  logoUrl: z.string().nullable().optional(),
 });
 
 type InvoiceFormData = z.infer<typeof invoiceSchema>;
@@ -63,9 +69,18 @@ interface InvoiceFormProps {
   logo: string | null;
   onLogoUpload: (file: File) => void;
   onLogoDelete: () => void;
+  availableStocks?: Stock[];
 }
 
-export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUpload, onLogoDelete }: InvoiceFormProps) {
+export function InvoiceForm({ 
+  initialData, 
+  onSubmit, 
+  onCancel, 
+  logo, 
+  onLogoUpload, 
+  onLogoDelete,
+  availableStocks = [] 
+}: InvoiceFormProps) {
   const [localLogo, setLocalLogo] = useState<string | null>(logo);
   const [previousPendingAmounts, setPreviousPendingAmounts] = useState<Array<{
     invoiceId: string;
@@ -249,24 +264,40 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
         });
         return;
       }
+
       const latestInvoice = await getLatestInvoiceByCustomerPhone(customerPhone);
-      const previousOutstanding = latestInvoice ? Number(latestInvoice.previousOutstanding || 0) + Number(latestInvoice.grandTotal || 0) - Number(latestInvoice.amountPaid || 0) : 0;
-      setPreviousPendingAmounts(latestInvoice ? [{
-        invoiceId: latestInvoice.id,
-        invoiceNumber: latestInvoice.invoiceNumber,
-        amount: previousOutstanding,
-        date: latestInvoice.dueDate,
-        status: latestInvoice.paymentStatus
-      }] : []);
-      setTotalPendingAmount(previousOutstanding);
-      setValue('previousOutstanding', previousOutstanding, { shouldValidate: true });
-      if (!latestInvoice) {
+      if (latestInvoice) {
+        // Calculate the actual pending amount from the latest invoice
+        const pendingAmount = Number(latestInvoice.previousOutstanding || 0) + 
+                            Number(latestInvoice.grandTotal || 0) - 
+                            Number(latestInvoice.amountPaid || 0);
+
+        // Update the state with previous pending amounts
+        setPreviousPendingAmounts([{
+          invoiceId: latestInvoice.id,
+          invoiceNumber: latestInvoice.invoiceNumber,
+          amount: pendingAmount,
+          date: latestInvoice.dueDate,
+          status: latestInvoice.paymentStatus
+        }]);
+
+        // Update the total pending amount
+        setTotalPendingAmount(pendingAmount);
+
+        toast({
+          title: "Previous Records Found",
+          description: `Found previous balance of ${formatCurrency(pendingAmount)}`,
+        });
+      } else {
+        setPreviousPendingAmounts([]);
+        setTotalPendingAmount(0);
         toast({
           title: "No Records",
           description: "No previous invoice found for this customer",
         });
       }
     } catch (error) {
+      console.error('Error fetching previous outstanding:', error);
       toast({
         title: "Error",
         description: "Failed to fetch previous outstanding.",
@@ -294,7 +325,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
       }
 
       // Calculate totals including previous outstanding
-      const currentInvoiceTotal = items.reduce((sum, item) => sum + item.total, 0);
+      const currentInvoiceTotal = items.reduce((sum, item) => sum + (item.total || 0), 0);
       const totalAmountDue = currentInvoiceTotal + previousOutstanding;
       const balanceDue = totalAmountDue - data.amountPaid;
 
@@ -324,7 +355,7 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
         amountPaid: data.amountPaid,
         balanceDue: balanceDue,
         paymentStatus: paymentStatus,
-        logoUrl: data.logoUrl,
+        logoUrl: data.logoUrl || undefined,
         previousPendingAmounts: previousPendingAmounts,
         totalPendingAmount: previousOutstanding,
         previousOutstanding: previousOutstanding,
@@ -363,28 +394,52 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
 
   const attachPreviousBalance = () => {
     if (totalPendingAmount > 0) {
-      // Set the previous outstanding amount
-      setValue('previousOutstanding', totalPendingAmount, { shouldValidate: true });
-      
-      // Calculate new totals
-      const newTotalAmountDue = grandTotal + totalPendingAmount;
-      const amountPaidNumber = Number(watch('amountPaid')) || 0;
-      const newBalanceDue = newTotalAmountDue - amountPaidNumber;
-      
-      // Update payment status
-      let newPaymentStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue' = 'Unpaid';
-      if (amountPaidNumber > 0) {
-        if (amountPaidNumber >= newTotalAmountDue) {
-          newPaymentStatus = 'Paid';
-        } else {
-          newPaymentStatus = 'Partial';
+      try {
+        // Update the previous outstanding amount in the form
+        setValue('previousOutstanding', totalPendingAmount);
+
+        // Get current form values
+        const currentItems = watch('items');
+        const currentAmountPaid = watch('amountPaid') || 0;
+        
+        // Calculate new totals
+        const currentInvoiceTotal = currentItems.reduce((sum, item) => sum + ((item.quantity || 0) * (item.rate || 0)), 0);
+        const newTotalAmountDue = currentInvoiceTotal + totalPendingAmount;
+        const newBalanceDue = newTotalAmountDue - currentAmountPaid;
+
+        // Update payment status based on new totals
+        let newPaymentStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue' = 'Unpaid';
+        if (currentAmountPaid > 0) {
+          if (currentAmountPaid >= newTotalAmountDue) {
+            newPaymentStatus = 'Paid';
+          } else {
+            newPaymentStatus = 'Partial';
+          }
+        } else if (newBalanceDue > 0 && new Date(watch('dueDate')) < new Date()) {
+          newPaymentStatus = 'Overdue';
         }
+
+        // Update form state
+        setValue('paymentStatus', newPaymentStatus);
+
+        // Show success message with detailed information
+        toast({
+          title: "Previous Balance Attached",
+          description: `Previous balance of ${formatCurrency(totalPendingAmount)} added. New total amount due: ${formatCurrency(newTotalAmountDue)}. Balance due: ${formatCurrency(newBalanceDue)}`,
+        });
+      } catch (error) {
+        console.error('Error attaching previous balance:', error);
+        toast({
+          title: "Error",
+          description: "Failed to attach previous balance. Please try again.",
+          variant: "destructive",
+        });
       }
-      setValue('paymentStatus', newPaymentStatus, { shouldValidate: true });
-      
+    } else {
       toast({
-        title: "Success",
-        description: `Previous balance of ${formatCurrency(totalPendingAmount)} added to previous outstanding. New total amount due: ${formatCurrency(newTotalAmountDue)}`,
+        title: "No Previous Balance",
+        description: "There is no previous balance to attach.",
+        variant: "default",
       });
     }
   };
@@ -558,8 +613,39 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
                   return (
                     <TableRow key={field.id}>
                       <TableCell>
-                        <Input {...register(`items.${index}.name`)} placeholder="Item Name" className="w-full" aria-invalid={errors.items?.[index]?.name ? "true" : "false"} />
-                        {errors.items?.[index]?.name && <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.name?.message}</p>}
+                        <Select
+                          onValueChange={(value) => {
+                            const selectedStock = availableStocks.find(stock => stock._id === value);
+                            if (selectedStock) {
+                              const items = [...watch('items')] as FormItem[];
+                              items[index] = {
+                                ...items[index],
+                                name: selectedStock.name,
+                                stockId: selectedStock._id,
+                                availableQuantity: selectedStock.quantity,
+                                quantity: Math.min(items[index].quantity || 1, selectedStock.quantity),
+                                rate: items[index].rate || 0,
+                                total: Math.min(items[index].quantity || 1, selectedStock.quantity) * (items[index].rate || 0)
+                              };
+                              setValue('items', items);
+                            }
+                          }}
+                          value={watch(`items.${index}.stockId`) || undefined}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select an item" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableStocks.map((stock) => (
+                              <SelectItem key={stock._id} value={stock._id || 'default'}>
+                                {stock.name} (Available: {stock.quantity})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {errors.items?.[index]?.name && (
+                          <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.name?.message}</p>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Input {...register(`items.${index}.description`)} placeholder="Description (Optional)" className="w-full" />
@@ -568,12 +654,38 @@ export function InvoiceForm({ initialData, onSubmit, onCancel, logo, onLogoUploa
                         <Input
                           type="number"
                           step="0.01"
+                          min="0"
                           {...register(`items.${index}.quantity`)}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            const numValue = parseFloat(value) || 0;
+                            const items = [...watch('items')] as FormItem[];
+                            const item = items[index];
+                            
+                            items[index] = {
+                              ...item,
+                              quantity: item.stockId && item.availableQuantity !== undefined
+                                ? Math.min(Math.max(0, numValue), item.availableQuantity)
+                                : Math.max(0, numValue),
+                              total: (item.stockId && item.availableQuantity !== undefined
+                                ? Math.min(Math.max(0, numValue), item.availableQuantity)
+                                : Math.max(0, numValue)) * (item.rate || 0)
+                            };
+                            
+                            setValue('items', items);
+                          }}
                           placeholder="1"
                           className="w-full text-right"
                           aria-invalid={errors.items?.[index]?.quantity ? "true" : "false"}
                         />
-                        {errors.items?.[index]?.quantity && <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.quantity?.message}</p>}
+                        {(watch('items')[index] as FormItem)?.stockId && (
+                          <small className="text-muted-foreground">
+                            Available: {(watch('items')[index] as FormItem)?.availableQuantity}
+                          </small>
+                        )}
+                        {errors.items?.[index]?.quantity && (
+                          <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.quantity?.message}</p>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Input

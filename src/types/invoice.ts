@@ -1,10 +1,13 @@
 export interface InvoiceItem {
-  id?: string;
+  id: string;
+  stockId?: string;
   name: string;
   description?: string;
   quantity: number;
   rate: number;
   total: number;
+  availableQuantity?: number;
+  stockManaged?: boolean; // Flag to indicate if this item is managed by stock system
 }
 
 export interface PaymentHistory {
@@ -22,17 +25,17 @@ export interface Invoice {
   dueDate: string; // ISO string format recommended
   customerName: string;
   customerAddress: string;
-  customerPhone: string;
-  customerGst: string;
+  customerPhone?: string;
+  customerGst?: string;
   items: InvoiceItem[];
   grandTotal: number;
   amountPaid: number;
   balanceDue: number;
   paymentStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue';
-  logoUrl?: string | null; // Optional: Store logo as Data URL or path
-  previousPendingAmounts: PaymentHistory[];
-  totalPendingAmount: number;
-  previousOutstanding: number; // Previous outstanding balance
+  logoUrl?: string; // Optional: Store logo as Data URL or path
+  previousPendingAmounts?: PaymentHistory[];
+  totalPendingAmount?: number;
+  previousOutstanding?: number; // Previous outstanding balance
   note?: string; // Optional note about the invoice
 }
 
