@@ -1,21 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Trash2, Upload } from 'lucide-react';
-import { saveLogo, getLogo, removeLogo } from '@/lib/logo-storage';
+import { useLogoStore } from '@/lib/store';
 
 export function LogoUpload() {
-  const [logo, setLogo] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Load logo from localStorage on component mount
-    const savedLogo = getLogo();
-    if (savedLogo) {
-      setLogo(savedLogo);
-    }
-  }, []);
+  const { logo, setLogo } = useLogoStore();
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -24,7 +16,6 @@ export function LogoUpload() {
       reader.onloadend = () => {
         const base64String = reader.result as string;
         setLogo(base64String);
-        saveLogo(base64String);
       };
       reader.readAsDataURL(file);
     }
@@ -32,7 +23,6 @@ export function LogoUpload() {
 
   const handleLogoDelete = () => {
     setLogo(null);
-    removeLogo();
   };
 
   return (

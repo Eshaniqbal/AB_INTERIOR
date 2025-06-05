@@ -30,6 +30,7 @@ import { addInvoice, loadInvoices, getLatestInvoiceByCustomerPhone } from '@/lib
 import { Badge } from "@/components/ui/badge";
 import type { Stock } from '@/types/stock';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
+import { LogoUpload } from '@/components/logo-upload';
 
 const itemSchema = z.object({
   id: z.string().optional(), // Keep optional for new items
@@ -66,22 +67,16 @@ interface InvoiceFormProps {
   initialData?: Invoice | null;
   onSubmit: (data: Invoice) => void;
   onCancel: () => void;
-  logo: string | null;
-  onLogoUpload: (file: File) => void;
-  onLogoDelete: () => void;
   availableStocks?: Stock[];
 }
 
 export function InvoiceForm({ 
   initialData, 
   onSubmit, 
-  onCancel, 
-  logo, 
-  onLogoUpload, 
-  onLogoDelete,
+  onCancel,
   availableStocks = [] 
 }: InvoiceFormProps) {
-  const [localLogo, setLocalLogo] = useState<string | null>(logo);
+  const [localLogo, setLocalLogo] = useState<string | null>(initialData?.logoUrl);
   const [previousPendingAmounts, setPreviousPendingAmounts] = useState<Array<{
     invoiceId: string;
     invoiceNumber: string;
@@ -105,7 +100,7 @@ export function InvoiceForm({
         amountPaid: initialData.amountPaid ?? 0,
         previousOutstanding: initialData.previousOutstanding ?? 0,
         paymentStatus: initialData.paymentStatus ?? 'Unpaid',
-        logoUrl: initialData.logoUrl ?? logo,
+        logoUrl: initialData.logoUrl ?? localLogo,
       }
     : {
         invoiceNumber: generateInvoiceNumber(),
@@ -115,8 +110,8 @@ export function InvoiceForm({
         amountPaid: 0,
         previousOutstanding: 0,
         paymentStatus: 'Unpaid',
-        logoUrl: logo,
-      }, [initialData, logo]); // Depend on initialData and logo
+        logoUrl: localLogo,
+      }, [initialData, localLogo]); // Depend on initialData and localLogo
 
   const {
     register,
@@ -196,32 +191,6 @@ export function InvoiceForm({
     }, [watchedAmountPaid, totalAmountDue, balanceDue, watchedDueDate, setValue, watch]);
 
 
-  const handleLogoUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      onLogoUpload(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLocalLogo(reader.result as string);
-        setValue('logoUrl', reader.result as string, { shouldDirty: true });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleLogoDelete = () => {
-      onLogoDelete();
-      setLocalLogo(null);
-      setValue('logoUrl', null, { shouldDirty: true });
-  }
-
-   useEffect(() => {
-    // Update local logo state if the prop changes externally (e.g., loaded from storage)
-    setLocalLogo(logo);
-    setValue('logoUrl', logo, { shouldDirty: false }); // Update form state without marking dirty initially
-  }, [logo, setValue]);
-
-
   useEffect(() => {
      // Reset form when initialData changes (e.g., navigating from new to edit)
      // Recalculate defaultValues inside useEffect to ensure it runs when dependencies change
@@ -237,7 +206,7 @@ export function InvoiceForm({
             amountPaid: initialData.amountPaid ?? 0,
             previousOutstanding: initialData.previousOutstanding ?? 0,
             paymentStatus: initialData.paymentStatus ?? 'Unpaid',
-            logoUrl: initialData.logoUrl ?? logo,
+            logoUrl: initialData.logoUrl ?? localLogo,
         }
         : {
             invoiceNumber: generateInvoiceNumber(),
@@ -247,10 +216,10 @@ export function InvoiceForm({
             amountPaid: 0,
             previousOutstanding: 0,
             paymentStatus: 'Unpaid',
-            logoUrl: logo,
+            logoUrl: localLogo,
         };
       reset(resetData);
-  }, [initialData, reset, logo]);
+  }, [initialData, reset, localLogo]);
 
   const fetchPreviousOutstanding = async () => {
     try {
@@ -449,43 +418,15 @@ export function InvoiceForm({
       <Card className="overflow-hidden shadow-lg">
         <CardHeader className="bg-primary print-bg-primary text-primary-foreground print-text-primary-foreground">
           <div className="flex justify-between items-start">
-             <div>
-                <CardTitle className="text-3xl font-bold">AB INTERIORS</CardTitle>
-                <div className="mt-2">
-                    <p>Laroo Opposite Petrol Pump, Kulgam, 192231</p>
-                    <p>Phone: +91 6005523074</p>
-                    <p>Email: abinteriors@gmail.com</p>
-                </div>
-             </div>
-            <div className="flex flex-col items-end space-y-2">
-                 {localLogo ? (
-                    <div className="relative group">
-                        <img src={localLogo} alt="Company Logo" className="h-20 w-auto object-contain" />
-                         <Button
-                            type="button"
-                            variant="destructive"
-                            size="icon"
-                            className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity print-hide h-6 w-6"
-                            onClick={handleLogoDelete}
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    </div>
-                ) : (
-                    <div className="relative">
-                         <Button type="button" variant="secondary" size="sm" className="print-hide" onClick={() => document.getElementById('logo-upload')?.click()}>
-                             <Upload className="mr-2 h-4 w-4" /> Upload Logo
-                         </Button>
-                         <Input
-                             id="logo-upload"
-                             type="file"
-                             accept="image/*"
-                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer print-hide"
-                             onChange={handleLogoUpload}
-                         />
-                     </div>
-                )}
+            <div>
+              <CardTitle className="text-3xl font-bold">AB INTERIORS</CardTitle>
+              <div className="mt-2">
+                <p>Laroo Opposite Petrol Pump, Kulgam, 192231</p>
+                <p>Phone: +91 6005523074</p>
+                <p>Email: abinteriors@gmail.com</p>
+              </div>
             </div>
+            <LogoUpload />
           </div>
         </CardHeader>
 
