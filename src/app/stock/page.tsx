@@ -17,6 +17,7 @@ import type { Stock } from '@/types/stock';
 import { toast } from 'sonner';
 import { CSVUpload } from '@/components/csv-upload';
 import { StockSummary } from '@/components/stock-summary';
+import { LogoUpload } from '@/components/logo-upload';
 
 export default function StockPage() {
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -153,7 +154,10 @@ export default function StockPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <h1 className="text-3xl font-bold mb-8">Stock Management</h1>
+      <div className="flex justify-between items-start mb-8">
+        <h1 className="text-3xl font-bold">Stock Management</h1>
+        <LogoUpload />
+      </div>
 
       <StockSummary stocks={stocks} />
 
