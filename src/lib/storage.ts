@@ -162,7 +162,13 @@ export const getLatestInvoiceByCustomerPhone = async (customerPhone: string): Pr
       throw new Error('Failed to fetch latest invoice');
     }
     const data = await response.json();
-    return data || null;
+    if (Array.isArray(data) && data.length > 0) {
+      const sortedInvoices = data.sort((a, b) => 
+        new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime()
+      );
+      return sortedInvoices[0];
+    }
+    return null;
   } catch (error) {
     console.error('Error fetching latest invoice:', error);
     return null;

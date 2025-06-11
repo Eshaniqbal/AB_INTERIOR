@@ -12,9 +12,10 @@ import {
   TableRow,
   TableHead,
   TableCell,
+  TableFooter,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Edit, Trash2, Search, ArrowLeft, ArrowRight, Plus } from 'lucide-react';
+import { Eye, Edit, Trash2, Search, ArrowLeft, ArrowRight, Plus, History } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { deleteInvoice } from '@/lib/storage';
 import { useToast } from "@/hooks/use-toast";
@@ -30,12 +31,20 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 interface InvoiceListProps {
   invoices: Invoice[];
@@ -65,6 +74,7 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
   const [currentPage, setCurrentPage] = useState(1);
   const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedCustomerPhone, setSelectedCustomerPhone] = useState<string | null>(null);
 
    // Update local state if the prop changes
    useEffect(() => {
@@ -119,6 +129,45 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
       });
     });
     return map;
+  }, [invoices]);
+
+  // Group invoices by customer phone and calculate totals
+  const customerBalances = useMemo(() => {
+    const balances: Record<string, {
+      customerName: string;
+      invoices: Invoice[];
+      totalBilled: number;
+      totalPaid: number;
+      totalPending: number;
+      lastInvoiceDate: string;
+    }> = {};
+
+    invoices.forEach(invoice => {
+      if (!invoice.customerPhone) return;
+
+      if (!balances[invoice.customerPhone]) {
+        balances[invoice.customerPhone] = {
+          customerName: invoice.customerName,
+          invoices: [],
+          totalBilled: 0,
+          totalPaid: 0,
+          totalPending: 0,
+          lastInvoiceDate: invoice.invoiceDate
+        };
+      }
+
+      const balance = balances[invoice.customerPhone];
+      balance.invoices.push(invoice);
+      balance.totalBilled += invoice.grandTotal + (invoice.previousOutstanding || 0);
+      balance.totalPaid += invoice.amountPaid || 0;
+      balance.totalPending = balance.totalBilled - balance.totalPaid;
+
+      if (new Date(invoice.invoiceDate) > new Date(balance.lastInvoiceDate)) {
+        balance.lastInvoiceDate = invoice.invoiceDate;
+      }
+    });
+
+    return balances;
   }, [invoices]);
 
   const handleDeleteClick = async (id: string, invoiceNumber: string) => {
@@ -202,7 +251,7 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
                 <TableHead>Phone</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Due Date</TableHead>
-                <TableHead className="text-right">Amount (₹)</TableHead>
+                <TableHead className="text-right">Balance Details</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -230,7 +279,140 @@ export function InvoiceList({ invoices: initialInvoices, onDelete }: InvoiceList
                     <TableCell>{invoice.customerPhone || '-'}</TableCell>
                     <TableCell>{formatDate(invoice.invoiceDate)}</TableCell>
                     <TableCell>{formatDate(invoice.dueDate)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(Number(invoice.grandTotal) || 0)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-between">
+                        <div className="text-right space-y-1">
+                          <div className="flex justify-between">
+                            <span className="text-sm text-muted-foreground">Bill Amount:</span>
+                            <span>{formatCurrency(invoice.grandTotal)}</span>
+                          </div>
+                          {invoice.previousOutstanding > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Previous:</span>
+                              <span className="text-destructive">+{formatCurrency(invoice.previousOutstanding)}</span>
+                            </div>
+                          )}
+                          {invoice.amountPaid > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Paid:</span>
+                              <span className="text-green-600">-{formatCurrency(invoice.amountPaid)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between font-medium border-t pt-1 mt-1">
+                            <span className="text-sm">Balance:</span>
+                            <span className={cn(
+                              invoice.balanceDue > 0 ? "text-destructive" : "text-green-600"
+                            )}>{formatCurrency(invoice.balanceDue)}</span>
+                          </div>
+                        </div>
+                        {invoice.customerPhone && (
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="ml-2"
+                                onClick={() => setSelectedCustomerPhone(invoice.customerPhone)}
+                              >
+                                <History className="h-4 w-4" />
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-3xl">
+                              <DialogHeader>
+                                <DialogTitle>Balance History - {invoice.customerName}</DialogTitle>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                {/* Summary Card */}
+                                <div className="grid grid-cols-3 gap-4">
+                                  <div className="bg-secondary/20 p-4 rounded-lg">
+                                    <div className="text-sm text-muted-foreground">Total Billed</div>
+                                    <div className="text-2xl font-semibold">
+                                      {formatCurrency(customerBalances[invoice.customerPhone].totalBilled)}
+                                    </div>
+                                  </div>
+                                  <div className="bg-green-100 p-4 rounded-lg">
+                                    <div className="text-sm text-muted-foreground">Total Paid</div>
+                                    <div className="text-2xl font-semibold text-green-600">
+                                      {formatCurrency(customerBalances[invoice.customerPhone].totalPaid)}
+                                    </div>
+                                  </div>
+                                  <div className="bg-destructive/10 p-4 rounded-lg">
+                                    <div className="text-sm text-muted-foreground">Total Pending</div>
+                                    <div className="text-2xl font-semibold text-destructive">
+                                      {formatCurrency(customerBalances[invoice.customerPhone].totalPending)}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Detailed Transaction History */}
+                                <div className="border rounded-lg">
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Invoice #</TableHead>
+                                        <TableHead className="text-right">Bill Amount</TableHead>
+                                        <TableHead className="text-right">Previous</TableHead>
+                                        <TableHead className="text-right">Paid</TableHead>
+                                        <TableHead className="text-right">Balance</TableHead>
+                                        <TableHead>Status</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {customerBalances[invoice.customerPhone].invoices
+                                        .sort((a, b) => new Date(a.invoiceDate).getTime() - new Date(b.invoiceDate).getTime())
+                                        .map((inv) => (
+                                          <TableRow key={inv.id}>
+                                            <TableCell>{formatDate(inv.invoiceDate)}</TableCell>
+                                            <TableCell>
+                                              <Link href={`/invoices/${inv.id}`} className="hover:underline">
+                                                {inv.invoiceNumber}
+                                              </Link>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                              {formatCurrency(inv.grandTotal)}
+                                            </TableCell>
+                                            <TableCell className="text-right text-destructive">
+                                              {inv.previousOutstanding > 0 ? 
+                                                formatCurrency(inv.previousOutstanding) : 
+                                                '-'}
+                                            </TableCell>
+                                            <TableCell className="text-right text-green-600">
+                                              {inv.amountPaid > 0 ? 
+                                                formatCurrency(inv.amountPaid) : 
+                                                '-'}
+                                            </TableCell>
+                                            <TableCell className={cn(
+                                              "text-right font-medium",
+                                              inv.balanceDue > 0 ? "text-destructive" : "text-green-600"
+                                            )}>
+                                              {formatCurrency(inv.balanceDue)}
+                                            </TableCell>
+                                            <TableCell>
+                                              <Badge variant={getStatusVariant(inv.paymentStatus)}>
+                                                {inv.paymentStatus}
+                                              </Badge>
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                    </TableBody>
+                                    <TableFooter>
+                                      <TableRow>
+                                        <TableCell colSpan={5}>Total Outstanding Balance</TableCell>
+                                        <TableCell className="text-right font-bold text-destructive">
+                                          {formatCurrency(customerBalances[invoice.customerPhone].totalPending)}
+                                        </TableCell>
+                                        <TableCell></TableCell>
+                                      </TableRow>
+                                    </TableFooter>
+                                  </Table>
+                                </div>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                     <Badge variant={getStatusVariant(invoice.paymentStatus)}>
                         {invoice.paymentStatus}

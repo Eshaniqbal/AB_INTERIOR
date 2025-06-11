@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { InvoiceForm } from '@/components/invoice-form';
 import type { Invoice } from '@/types/invoice';
+import type { Stock } from '@/types/stock';
 import { getInvoiceById, updateInvoice, saveLogo, loadLogo, deleteLogo } from '@/lib/storage';
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from 'lucide-react';
@@ -18,6 +19,7 @@ export default function EditInvoicePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availableStocks, setAvailableStocks] = useState<Stock[]>([]);
 
   // Always ensure invoiceId is a string
   const invoiceIdRaw = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -30,9 +32,19 @@ export default function EditInvoicePage() {
         setIsLoading(true);
         setError(null);
         try {
+          // Fetch invoice data
           const loadedInvoice = await getInvoiceById(invoiceId);
           const loadedLogo = await loadLogo();
           setLogo(loadedLogo);
+          
+          // Fetch available stocks
+          const stocksResponse = await fetch('/api/stock');
+          if (!stocksResponse.ok) {
+            throw new Error('Failed to fetch stocks');
+          }
+          const stocksData = await stocksResponse.json();
+          setAvailableStocks(stocksData);
+
           if (loadedInvoice) {
             setInvoice(loadedInvoice);
           } else {
@@ -94,7 +106,8 @@ export default function EditInvoicePage() {
       const invoiceData = {
         ...data,
         id: invoiceId,
-        logoUrl: logo
+        logoUrl: logo,
+        balanceDue: (data.grandTotal + (data.previousOutstanding || 0)) - (data.amountPaid || 0)
       };
       await updateInvoice(invoiceData);
       toast({
@@ -149,6 +162,7 @@ export default function EditInvoicePage() {
         logo={logo}
         onLogoUpload={handleLogoUpload}
         onLogoDelete={handleLogoDelete}
+        availableStocks={availableStocks}
       />
     </div>
   );

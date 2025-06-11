@@ -65,6 +65,13 @@ const PaymentHistorySchema = new mongoose.Schema({
   }
 });
 
+const PaymentRecordSchema = new mongoose.Schema({
+  id: { type: String, required: true },
+  amount: { type: Number, required: true },
+  date: { type: String, required: true },
+  notes: String
+});
+
 const InvoiceSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
   invoiceNumber: { type: String, required: true },
@@ -72,22 +79,37 @@ const InvoiceSchema = new mongoose.Schema({
   dueDate: { type: String, required: true },
   customerName: { type: String, required: true },
   customerAddress: { type: String, required: true },
-  customerPhone: String,
-  customerGst: String,
-  items: [InvoiceItemSchema],
+  customerPhone: { type: String, default: '' },
+  customerGst: { type: String, default: '' },
+  items: {
+    type: [InvoiceItemSchema],
+    required: true,
+    validate: [(val: any[]) => val.length > 0, 'At least one item is required']
+  },
   grandTotal: { type: Number, required: true },
   amountPaid: { type: Number, required: true, default: 0 },
   balanceDue: { type: Number, required: true },
   paymentStatus: { 
     type: String, 
     required: true,
-    enum: ['Paid', 'Partial', 'Unpaid', 'Overdue']
+    enum: ['Paid', 'Partial', 'Unpaid', 'Overdue'],
+    default: 'Unpaid'
   },
   logoUrl: String,
-  previousPendingAmounts: [PaymentHistorySchema],
+  previousPendingAmounts: {
+    type: [PaymentHistorySchema],
+    default: []
+  },
   totalPendingAmount: { type: Number, required: true, default: 0 },
   previousOutstanding: { type: Number, required: true, default: 0 },
-  note: String
+  note: String,
+  paymentHistory: {
+    type: [PaymentRecordSchema],
+    default: []
+  }
+}, {
+  timestamps: true,
+  strict: false
 });
 
 // Create models

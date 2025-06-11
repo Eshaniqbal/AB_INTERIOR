@@ -234,35 +234,54 @@ export function InvoiceForm({
         return;
       }
 
-      const latestInvoice = await getLatestInvoiceByCustomerPhone(customerPhone);
-      if (latestInvoice) {
-        // Calculate the actual pending amount from the latest invoice
-        const pendingAmount = Number(latestInvoice.previousOutstanding || 0) + 
-                            Number(latestInvoice.grandTotal || 0) - 
-                            Number(latestInvoice.amountPaid || 0);
+      const response = await fetch(`/api/invoices?customerPhone=${encodeURIComponent(customerPhone)}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch previous invoices');
+      }
 
-        // Update the state with previous pending amounts
-        setPreviousPendingAmounts([{
-          invoiceId: latestInvoice.id,
-          invoiceNumber: latestInvoice.invoiceNumber,
-          amount: pendingAmount,
-          date: latestInvoice.dueDate,
-          status: latestInvoice.paymentStatus
-        }]);
+      const invoices = await response.json();
+      if (Array.isArray(invoices) && invoices.length > 0) {
+        // Filter out the current invoice if we're in edit mode
+        const previousInvoices = initialData 
+          ? invoices.filter(inv => inv.id !== initialData.id)
+          : invoices;
 
-        // Update the total pending amount
-        setTotalPendingAmount(pendingAmount);
+        if (previousInvoices.length === 0) {
+          setPreviousPendingAmounts([]);
+          setTotalPendingAmount(0);
+          toast({
+            title: "No Previous Records",
+            description: "No previous invoices found for this customer",
+          });
+          return;
+        }
+
+        // Calculate pending amounts for each invoice
+        const pendingAmounts = previousInvoices.map(invoice => ({
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: Number(invoice.grandTotal || 0) - Number(invoice.amountPaid || 0),
+          date: invoice.dueDate,
+          status: invoice.paymentStatus
+        })).filter(item => item.amount > 0); // Only include invoices with pending amounts
+
+        // Calculate total pending amount
+        const totalPending = pendingAmounts.reduce((sum, item) => sum + item.amount, 0);
+
+        // Update state
+        setPreviousPendingAmounts(pendingAmounts);
+        setTotalPendingAmount(totalPending);
 
         toast({
           title: "Previous Records Found",
-          description: `Found previous balance of ${formatCurrency(pendingAmount)}`,
+          description: `Found ${pendingAmounts.length} previous invoice${pendingAmounts.length > 1 ? 's' : ''} with total balance of ${formatCurrency(totalPending)}`,
         });
       } else {
         setPreviousPendingAmounts([]);
         setTotalPendingAmount(0);
         toast({
           title: "No Records",
-          description: "No previous invoice found for this customer",
+          description: "No previous invoices found for this customer",
         });
       }
     } catch (error) {
@@ -286,17 +305,10 @@ export function InvoiceForm({
         description: item.description || ''
       }));
 
-      // Fetch only the latest invoice for this customer
-      let previousOutstanding = 0;
-      if (data.customerPhone) {
-        const latestInvoice = await getLatestInvoiceByCustomerPhone(data.customerPhone);
-        previousOutstanding = latestInvoice ? Number(latestInvoice.previousOutstanding || 0) + Number(latestInvoice.grandTotal || 0) - Number(latestInvoice.amountPaid || 0) : 0;
-      }
-
       // Calculate totals including previous outstanding
       const currentInvoiceTotal = items.reduce((sum, item) => sum + (item.total || 0), 0);
-      const totalAmountDue = currentInvoiceTotal + previousOutstanding;
-      const balanceDue = totalAmountDue - data.amountPaid;
+      const totalAmountDue = currentInvoiceTotal + (data.previousOutstanding || 0);
+      const balanceDue = totalAmountDue - (data.amountPaid || 0);
 
       // Determine payment status
       let paymentStatus: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue' = 'Unpaid';
@@ -321,22 +333,25 @@ export function InvoiceForm({
         customerGst: data.customerGst || '',
         items: items,
         grandTotal: currentInvoiceTotal,
-        amountPaid: data.amountPaid,
+        amountPaid: data.amountPaid || 0,
         balanceDue: balanceDue,
         paymentStatus: paymentStatus,
         logoUrl: data.logoUrl || undefined,
         previousPendingAmounts: previousPendingAmounts,
-        totalPendingAmount: previousOutstanding,
-        previousOutstanding: previousOutstanding,
-        note: previousOutstanding > 0 ? `Includes previous outstanding balance of ${formatCurrency(previousOutstanding)} from last invoice` : undefined
+        totalPendingAmount: data.previousOutstanding || 0,
+        previousOutstanding: data.previousOutstanding || 0,
+        note: data.previousOutstanding > 0 ? `Includes previous outstanding balance of ${formatCurrency(data.previousOutstanding)}` : undefined,
+        paymentHistory: initialData?.paymentHistory || []
       };
 
-      await addInvoice(invoice);
-      toast({
-        title: "Success",
-        description: `Invoice saved successfully${previousOutstanding > 0 ? ` with previous outstanding balance of ${formatCurrency(previousOutstanding)}` : ''}.`,
-      });
-      router.push('/invoices');
+      if (onSubmit) {
+        await onSubmit(invoice);
+        toast({
+          title: "Success",
+          description: `Invoice saved successfully${data.previousOutstanding > 0 ? ` with previous outstanding balance of ${formatCurrency(data.previousOutstanding)}` : ''}.`,
+        });
+        router.push('/invoices');
+      }
     } catch (error) {
       console.error('Error saving invoice:', error);
       toast({
@@ -645,7 +660,7 @@ export function InvoiceForm({
                         />
                         {errors.items?.[index]?.rate && <p className="text-destructive text-sm mt-1">{errors.items?.[index]?.rate?.message}</p>}
                       </TableCell>
-                      <TableCell className="text-right font-medium">₹{itemTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(itemTotal)}</TableCell>
                       <TableCell className="print-hide">
                         <Button
                           type="button"
@@ -736,20 +751,17 @@ export function InvoiceForm({
 
                 <div className="flex justify-between items-center font-semibold">
                     <span>Current Invoice Amount:</span>
-                     {/* Display calculated grand total */}
-                    <span>₹{formatCurrency(grandTotal)}</span>
+                    <span>{formatCurrency(grandTotal)}</span>
                 </div>
 
                 <div className="flex justify-between items-center font-semibold">
                     <span>Total Amount Due:</span>
-                     {/* Display calculated total amount due */}
-                    <span>₹{formatCurrency(totalAmountDue)}</span>
+                    <span>{formatCurrency(totalAmountDue)}</span>
                 </div>
 
                 <div className="flex justify-between items-center font-semibold text-primary">
                     <span>Balance Due:</span>
-                     {/* Display calculated balance due */}
-                    <span>₹{formatCurrency(balanceDue)}</span>
+                    <span>{formatCurrency(balanceDue)}</span>
                 </div>
             </div>
           </div>

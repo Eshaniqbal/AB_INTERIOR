@@ -66,7 +66,7 @@ export default function WorkersPage() {
                 <tr key={worker.id} className="border-b hover:bg-muted/30">
                   <td>{worker.name}</td>
                   <td>{worker.phone || '-'}</td>
-                  <td>₹{worker.monthlySalary?.toLocaleString('en-IN')}</td>
+                  <td>{formatCurrency(worker.monthlySalary)}</td>
                   <td>
                     <Link href={`/workers/${worker.id}`}>
                       <Button variant="outline" size="sm">View</Button>

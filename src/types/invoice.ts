@@ -18,6 +18,13 @@ export interface PaymentHistory {
   status: 'Paid' | 'Partial' | 'Unpaid' | 'Overdue';
 }
 
+export interface PaymentRecord {
+  id: string;
+  amount: number;
+  date: string;
+  notes?: string;
+}
+
 export interface Invoice {
   id: string; // Unique ID for the invoice (e.g., timestamp or UUID)
   invoiceNumber: string;
@@ -37,6 +44,7 @@ export interface Invoice {
   totalPendingAmount?: number;
   previousOutstanding?: number; // Previous outstanding balance
   note?: string; // Optional note about the invoice
+  paymentHistory: PaymentRecord[];
 }
 
 export interface Worker {

@@ -5,12 +5,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount: number): string {
+export function formatCurrency(amount: number | undefined): string {
+  const value = amount || 0;
   const formatted = new Intl.NumberFormat('en-IN', {
     style: 'decimal',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(value);
   
   return `₹${formatted}`;
 }
@@ -25,13 +26,17 @@ export function generateInvoiceNumber(): string {
   return `AB-${year}${month}${day}-${randomPart}`;
 }
 
-export function formatDate(date: Date | string): string {
+export function formatDate(date: Date | string | undefined): string {
+   if (!date) {
+     return "-";
+   }
+   
    try {
     const d = typeof date === 'string' ? new Date(date) : date;
     // Check if date is valid after parsing
     if (isNaN(d.getTime())) {
         console.warn("Invalid date provided to formatDate:", date);
-        return "Invalid Date"; // Or return an empty string or today's date formatted
+        return "-";
     }
     return d.toLocaleDateString('en-IN', {
       year: 'numeric',
@@ -40,6 +45,6 @@ export function formatDate(date: Date | string): string {
     });
   } catch (error) {
     console.error("Error formatting date:", date, error);
-    return "Error Date"; // Return an error indicator
+    return "-";
   }
 }

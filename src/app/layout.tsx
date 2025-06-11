@@ -1,21 +1,8 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
 import { Toaster as SonnerToaster } from 'sonner';
-
-const geistSans = Geist({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-geist-sans',
-});
-
-const geistMono = Geist_Mono({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-geist-mono',
-});
 
 export const metadata: Metadata = {
   title: 'AB INTERIORS - Invoice Generator',
@@ -28,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn(geistSans.variable, geistMono.variable)}>
+    <html lang="en">
       <body
         className={cn(
           "antialiased bg-secondary min-h-screen font-sans"

@@ -8,11 +8,34 @@ export async function GET(request: Request) {
     await connectDB();
     const { searchParams } = new URL(request.url);
     const customerPhone = searchParams.get('customerPhone');
+    
     if (customerPhone) {
-      // Fetch only the latest invoice for this customer
-      const latestInvoice = await InvoiceModel.findOne({ customerPhone }).sort({ invoiceDate: -1 });
-      return NextResponse.json(latestInvoice || null);
+      // Fetch all invoices for this customer, sorted by date
+      const customerInvoices = await InvoiceModel.find({ customerPhone })
+        .sort({ invoiceDate: -1 });
+
+      if (customerInvoices.length === 0) {
+        return NextResponse.json(null);
+      }
+
+      // Calculate cumulative payment history
+      let totalOutstanding = 0;
+      const processedInvoices = customerInvoices.map(invoice => {
+        const invoiceTotal = invoice.grandTotal;
+        const amountPaid = invoice.amountPaid || 0;
+        const invoiceBalance = invoiceTotal - amountPaid;
+        totalOutstanding += invoiceBalance;
+        
+        return {
+          ...invoice.toObject(),
+          outstandingAtTime: totalOutstanding
+        };
+      });
+
+      // Return all customer invoices with the latest one first
+      return NextResponse.json(processedInvoices);
     }
+
     // Default: fetch all invoices
     const invoices = await InvoiceModel.find({}).sort({ invoiceDate: -1 });
     return NextResponse.json(invoices);

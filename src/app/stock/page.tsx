@@ -94,14 +94,15 @@ export default function StockPage() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to delete stock');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete stock');
       }
 
       toast.success('Stock deleted successfully');
       fetchStocks();
     } catch (error) {
       console.error('Error deleting stock:', error);
-      toast.error('Failed to delete stock');
+      toast.error(error instanceof Error ? error.message : 'Failed to delete stock');
     }
   };
 

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb';
-import { StockModel } from '@/lib/mongodb';
+import { connectDB, StockModel } from '@/lib/mongodb';
 
 export async function DELETE(
   request: Request,
@@ -8,6 +7,14 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
+    
+    if (!params.id) {
+      return NextResponse.json(
+        { error: 'Stock ID is required' },
+        { status: 400 }
+      );
+    }
+
     const result = await StockModel.findByIdAndDelete(params.id);
     
     if (!result) {
@@ -17,7 +24,10 @@ export async function DELETE(
       );
     }
 
-    return NextResponse.json({ message: 'Stock deleted successfully' });
+    return NextResponse.json(
+      { message: 'Stock deleted successfully' },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Error deleting stock:', error);
     return NextResponse.json(
