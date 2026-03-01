@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  CloudHisaab — Invoice PDF Generator Lambda
+  Triggered by SQS. Generates PDF invoices and stores them in S3.
+
+Globals:
+  Function:
+    Timeout: 120          # WeasyPrint can take 10–30s for complex pages
+    MemorySize: 1024      # WeasyPrint is memory-hungry (512 min, 1024 recommended)
+    Environment:
+      Variables:
+        AWS_REGION:      !Ref AWS::Region
+        S3_BUCKET:       !Ref S3BucketName
+        REGISTRY_TABLE:  !Ref RegistryTableName
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Default: cloudhisaab-storage
+    Description: S3 bucket for storing generated PDF invoices
+
+  RegistryTableName:
+    Type: String
+    Default: ch_registry
+    Description: DynamoDB global registry table name
+
+  SqsQueueArn:
+    Type: String
+    Description: ARN of the SQS queue that triggers this Lambda
+
+  ImageUri:
+    Type: String
+    Description: ECR image URI (e.g. 123456789.dkr.ecr.us-east-1.amazonaws.com/cloudhisaab-invoice-pdf:latest)
+
+Resources:
+
+  # ── Lambda Function ──────────────────────────────────────────────────
+  InvoicePdfFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: cloudhisaab-invoice-pdf
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      Description: "Generates PDF tax invoices triggered by SQS"
+      ReservedConcurrentExecutions: 10   # throttle to avoid overloading DynamoDB
+
+      Policies:
+        # Read/write to ALL per-org tables (ch_*)
+        - Statement:
+            Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+              - dynamodb:UpdateItem
+            Resource:
+              - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/ch_*"
+
+        # S3 write for PDF upload
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:PutObjectAcl
+            Resource: !Sub "arn:aws:s3:::${S3BucketName}/*"
+
+        # SQS receive / delete
+        - Statement:
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource: !Ref SqsQueueArn
+
+        # CloudWatch Logs
+        - CloudWatchLogsFullAccess
+
+      Events:
+        SqsTrigger:
+          Type: SQS
+          Properties:
+            Queue: !Ref SqsQueueArn
+            BatchSize: 5              # process up to 5 invoices per invocation
+            MaximumBatchingWindowInSeconds: 10
+            FunctionResponseTypes:
+              - ReportBatchItemFailures  # partial batch success
+
+  # ── CloudWatch Log Group ─────────────────────────────────────────────
+  InvoicePdfLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/cloudhisaab-invoice-pdf"
+      RetentionInDays: 30
+
+Outputs:
+  FunctionArn:
+    Description: Invoice PDF Lambda ARN
+    Value: !GetAtt InvoicePdfFunction.Arn
+
+  FunctionName:
+    Description: Lambda function name
+    Value: !Ref InvoicePdfFunction

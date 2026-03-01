@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice {{ invoice_number }}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; font-size: 13px; color: #1a1a2e; background: #fff; }
+  .page { padding: 40px; max-width: 800px; margin: 0 auto; }
+
+  /* Header */
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+  .business-name { font-size: 24px; font-weight: 700; color: #4f46e5; }
+  .business-details { font-size: 11px; color: #6b7280; margin-top: 4px; line-height: 1.6; }
+  .invoice-meta { text-align: right; }
+  .invoice-title { font-size: 28px; font-weight: 700; color: #4f46e5; letter-spacing: -0.5px; }
+  .invoice-number { font-size: 14px; color: #374151; margin-top: 4px; font-weight: 600; }
+  .invoice-date { font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+  /* Divider */
+  .divider { border: none; border-top: 2px solid #e5e7eb; margin: 20px 0; }
+  .divider-accent { border-color: #4f46e5; }
+
+  /* Bill to / Details row */
+  .details-row { display: flex; justify-content: space-between; margin-bottom: 24px; }
+  .bill-to h4 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin-bottom: 6px; }
+  .bill-to .customer-name { font-size: 16px; font-weight: 600; color: #111827; }
+  .bill-to p { font-size: 12px; color: #6b7280; margin-top: 2px; }
+  .payment-badge {
+    background: #f0fdf4; border: 1px solid #86efac;
+    color: #15803d; padding: 4px 12px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; align-self: flex-start;
+  }
+
+  /* Items table */
+  .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  .items-table thead tr { background: #4f46e5; color: white; }
+  .items-table thead th { padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .items-table thead th:last-child { text-align: right; }
+  .items-table tbody tr { border-bottom: 1px solid #f3f4f6; }
+  .items-table tbody tr:nth-child(even) { background: #f9fafb; }
+  .items-table tbody td { padding: 10px 12px; font-size: 13px; }
+  .items-table tbody td:last-child { text-align: right; font-weight: 500; }
+  .product-name { font-weight: 500; color: #111827; }
+  .product-sku { font-size: 10px; color: #9ca3af; }
+
+  /* Totals */
+  .totals-section { display: flex; justify-content: flex-end; margin-bottom: 24px; }
+  .totals-box { width: 260px; }
+  .totals-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; color: #374151; }
+  .totals-row.discount { color: #dc2626; }
+  .totals-row.total { border-top: 2px solid #4f46e5; padding-top: 10px; margin-top: 4px; }
+  .totals-row.total .label { font-size: 15px; font-weight: 700; color: #111827; }
+  .totals-row.total .value { font-size: 18px; font-weight: 700; color: #4f46e5; }
+
+  /* Notes & Footer */
+  .notes { background: #f9fafb; border-left: 3px solid #4f46e5; padding: 12px 16px; border-radius: 4px; margin-bottom: 24px; }
+  .notes h5 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; margin-bottom: 4px; }
+  .notes p { font-size: 12px; color: #374151; }
+  .footer { text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 16px; }
+  .footer strong { color: #4f46e5; }
+
+  /* GST summary */
+  .gst-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 11px; color: #1e40af; }
+  .gst-box strong { display: block; margin-bottom: 3px; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="business-info">
+      <div class="business-name">{{ tenant.business_name or 'CloudHisaab' }}</div>
+      <div class="business-details">
+        {% if tenant.address %}{{ tenant.address }}, {{ tenant.city }}<br>{% endif %}
+        {% if tenant.gstin %}GSTIN: {{ tenant.gstin }}<br>{% endif %}
+        {% if tenant.phone %}📞 {{ tenant.phone }}{% endif %}
+        {% if tenant.email %} &nbsp;·&nbsp; ✉ {{ tenant.email }}{% endif %}
+      </div>
+    </div>
+    <div class="invoice-meta">
+      <div class="invoice-title">TAX INVOICE</div>
+      <div class="invoice-number">{{ invoice_number }}</div>
+      <div class="invoice-date">Date: {{ sale.date or generated_at[:11] }}</div>
+    </div>
+  </div>
+
+  <hr class="divider divider-accent">
+
+  <!-- Bill To -->
+  <div class="details-row">
+    <div class="bill-to">
+      <h4>Bill To</h4>
+      <div class="customer-name">{{ sale.customer_name }}</div>
+      {% if sale.customer_phone %}<p>📞 {{ sale.customer_phone }}</p>{% endif %}
+      {% if sale.customer_gstin %}<p>GSTIN: {{ sale.customer_gstin }}</p>{% endif %}
+    </div>
+    <div>
+      <span class="payment-badge">{{ sale.payment_method or 'CASH' }}</span>
+    </div>
+  </div>
+
+  <!-- Items Table -->
+  <table class="items-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Product</th>
+        <th>HSN/SKU</th>
+        <th>Qty</th>
+        <th>Rate (₹)</th>
+        <th>GST %</th>
+        <th>GST (₹)</th>
+        <th>Total (₹)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>
+          <div class="product-name">{{ item.product_name }}</div>
+          <div class="product-sku">{{ item.sku }}</div>
+        </td>
+        <td>{{ item.sku }}</td>
+        <td>{{ item.quantity }}</td>
+        <td>₹{{ "%.2f"|format(item.selling_price) }}</td>
+        <td>{{ item.gst_rate }}%</td>
+        <td>₹{{ "%.2f"|format(item.gst_amount) }}</td>
+        <td>₹{{ "%.2f"|format(item.line_total_with_gst or (item.line_total + item.gst_amount)) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- GST Summary -->
+  <div class="gst-box">
+    <strong>GST Summary</strong>
+    Taxable Amount: ₹{{ "%.2f"|format(sale.subtotal) }} &nbsp;·&nbsp;
+    Total GST: ₹{{ "%.2f"|format(sale.total_gst) }}
+  </div>
+
+  <!-- Totals -->
+  <div class="totals-section">
+    <div class="totals-box">
+      <div class="totals-row">
+        <span>Subtotal (ex-GST)</span>
+        <span>₹{{ "%.2f"|format(sale.subtotal) }}</span>
+      </div>
+      <div class="totals-row">
+        <span>GST</span>
+        <span>₹{{ "%.2f"|format(sale.total_gst) }}</span>
+      </div>
+      {% if sale.discount_amount and sale.discount_amount > 0 %}
+      <div class="totals-row discount">
+        <span>Discount</span>
+        <span>-₹{{ "%.2f"|format(sale.discount_amount) }}</span>
+      </div>
+      {% endif %}
+      <div class="totals-row total">
+        <span class="label">Total Amount</span>
+        <span class="value">₹{{ "%.2f"|format(sale.total_amount) }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes -->
+  {% if sale.notes %}
+  <div class="notes">
+    <h5>Notes</h5>
+    <p>{{ sale.notes }}</p>
+  </div>
+  {% endif %}
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>Thank you for your business! &nbsp;·&nbsp; Generated by <strong>CloudHisaab</strong> &nbsp;·&nbsp; {{ generated_at }}</p>
+    <p style="margin-top:4px;">This is a computer-generated invoice and does not require a physical signature.</p>
+  </div>
+
+</div>
+</body>
+</html>
